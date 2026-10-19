@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.6.1';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -500,9 +500,13 @@ async function renderGrade(vistId) {
   view.innerHTML = `<p class="muted small">${fotos.length} foto(s) já tirada(s). Toque numa foto para abrir e editar a observação ou o áudio, ou para descartá-la.</p>
     <div class="grid">${fotos.map(f => `<button class="thumb" data-foto="${f.id}" aria-label="${codFoto(vist, f)}"><img src="${url(toBlob(f.thumb))}" alt="">
       <span class="tags">${f.audio ? '🎙' : ''}${f.obs ? '📝' : ''}</span><span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>
-    <div class="stack" style="margin-top:12px"><button class="btn" id="tirar">📷 PRÓXIMA FOTO</button></div>`;
+    <div class="stack" style="margin-top:12px"><button class="btn" id="tirar">📷 PRÓXIMA FOTO</button>
+      <button class="btn sec" id="gConcluir">CONCLUIR VISTORIA</button>
+      <button class="btn danger" id="gCancelar">CANCELAR VISTORIA</button></div>`;
   view.querySelectorAll('[data-foto]').forEach(el => el.onclick = () => { location.hash = '#/foto/' + el.dataset.foto; });
   $('#tirar').onclick = () => requestCamera(vistId);
+  $('#gConcluir').onclick = () => concluirVistoria(vistId);
+  $('#gCancelar').onclick = () => cancelarVistoria(vist, op);
 }
 async function renderPausadas(opId) {
   const op = await get('ops', opId);
