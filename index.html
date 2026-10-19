@@ -35,6 +35,7 @@ header{position:sticky;top:0;z-index:5;background:var(--primary);color:var(--pri
   padding:env(safe-area-inset-top) 8px 0;min-height:calc(var(--hdr) + env(safe-area-inset-top));display:flex;align-items:center;gap:6px}
 header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 header button{background:transparent;border:0;color:inherit;font-size:16px;padding:8px 10px;font-weight:600}
+header #home{display:flex;align-items:center;padding:8px}
 main{padding:16px;padding-bottom:calc(env(safe-area-inset-bottom) + 24px);max-width:820px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
 .list-item{display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
@@ -48,8 +49,9 @@ textarea{min-height:160px;resize:vertical}
   padding:14px;font:inherit;font-weight:700;background:var(--primary);color:var(--primary-ink);cursor:pointer;text-align:center}
 .btn.big{padding:22px 14px;font-size:18px;margin-bottom:12px}
 .btn.sec{background:var(--card);color:var(--primary-text);border:1.5px solid var(--primary)}
-.btn:not(.sec):not(.danger):active{background:var(--primary-hover)}
+.btn:not(.sec):not(.danger):not(.warn):active{background:var(--primary-hover)}
 .btn.danger{background:#b3261e}
+.btn.warn{background:var(--warn-bg);color:var(--warn);border:1.5px solid var(--warn)}
 .btn:disabled{opacity:.5}
 .stack>.btn{margin-top:10px}
 .badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:6px;background:var(--line);color:var(--text);white-space:nowrap}
@@ -79,8 +81,8 @@ body.capture main{padding:0;max-width:none}
 .zone.top{grid-column:1 / span 2}
 .zone.done{background:rgba(0,92,169,.35);border-color:var(--gold)}
 .zone .play{position:absolute;right:8px;top:8px;background:#fff;color:#000;border:0;border-radius:50%;width:40px;height:40px;font-size:16px}
-.cap-bar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:10px 10px calc(env(safe-area-inset-bottom) + 10px);background:var(--card)}
-.cap-bar .btn{padding:14px 6px;font-size:14px;line-height:1.15}
+.cap-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px 10px calc(env(safe-area-inset-bottom) + 10px);background:var(--card)}
+.cap-bar .btn{padding:12px 3px;font-size:12.5px;line-height:1.15;border-radius:10px}
 
 /* Sobreposições */
 .overlay{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -105,6 +107,7 @@ body.capture main{padding:0;max-width:none}
   <button id="back" class="hidden">‹ Voltar</button>
   <h1 id="title">Vistor.IA Generator</h1>
   <button id="hdrAction" class="hidden"></button>
+  <button id="home" class="hidden" aria-label="Tela principal" title="Tela principal"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h5v-6h3v6h5V10"/></svg></button>
 </header>
 <main id="view"></main>
 <input id="camInput" type="file" accept="image/*" capture="environment" class="hidden">

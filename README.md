@@ -1,4 +1,4 @@
-# Vistor.IA Generator — v0.4.1
+# Vistor.IA Generator — v0.5.0
 
 App web instalável (PWA) para registrar vistorias no celular (Android e iPhone). Funciona sem internet e sem IA. Tudo fica no aparelho até o usuário baixar o ZIP.
 
@@ -6,12 +6,15 @@ App web instalável (PWA) para registrar vistorias no celular (Android e iPhone)
 - Tela principal: **Cadastrar operação** (tomador, número 0000.000-00, empreendimento) ou **Selecionar operação existente** (busca pelos 3 campos; lixeira para excluir).
 - Operação: **Início rápido de vistoria** (abre a câmera; data = hoje), **Continuar vistoria pausada**, **Consultar vistorias** (filtros por data, operação, tomador e empreendimento; lixeira para excluir).
 - Foto: só é salva com localização. Sobre a foto, três áreas: lupa (tela cheia), microfone (grava na hora, CONCLUIR vincula à foto) e observação escrita. Áudio e texto são opcionais e podem ser usados juntos.
-- Botões: Cancelar vistoria (confirmação dupla), Próxima foto e Concluir vistoria (com identificação opcional).
+- Botões: Cancelar vistoria (confirmação dupla), Descartar foto, Próxima foto e Concluir vistoria (com identificação opcional).
+- O ícone de casa na barra superior volta direto para a tela principal.
 - Ao concluir, é gerado um ZIP com as fotos ("ddmmaaaa - hhmmss.jpg", GPS no EXIF), os áudios ("ddmmaaaa - hhmmss - audio.m4a") e o relatório .DOCX. No relatório, a coluna "Áudio" traz o nome do arquivo de áudio da foto (ou "—").
 - Numeração: operação → V01… → V01-F001…
 - Na consulta, "Excluir fotos e dados do celular" apaga fotos, áudios, coordenadas e observações. Ficam registrados a operação, o empreendimento, o tomador, a data e a identificação.
 
 ## Colocar no ar
+Publicado em https://guisn21.github.io/vistor.IA/ (repositório github.com/Guisn21/vistor.ia, GitHub Pages pela branch main).
+
 É preciso hospedar esta pasta em um endereço **https** (por exemplo GitHub Pages ou Netlify), porque câmera, GPS e microfone só funcionam em https. Para instalar: no iPhone, use Safari → Compartilhar → Adicionar à Tela de Início; no Android, use Chrome → ⋮ → Instalar app.
 
 ## Limitações conhecidas

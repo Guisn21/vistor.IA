@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.5.0';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -77,11 +77,19 @@ function setHeader(title, back, action) {
   const b = $('#back');
   b.classList.toggle('hidden', !back);
   b.onclick = typeof back === 'function' ? back : () => { location.hash = back; };
+  // Casa: em todas as telas, exceto a principal, volta direto para a tela principal.
+  $('#home').classList.toggle('hidden', !back);
   const a = $('#hdrAction');
   a.classList.toggle('hidden', !action);
   if (action) { a.textContent = action.label; a.onclick = action.onClick; }
   document.body.classList.remove('capture');
 }
+$('#home').onclick = () => {
+  if (recorder) return;
+  // Na tela da foto, a vistoria fica pausada (tudo já está salvo no celular).
+  if (document.body.classList.contains('capture')) toast('Vistoria pausada. Continue depois em "Continuar vistoria pausada".', 3500);
+  location.hash = '#/';
+};
 const objURLs = [];
 function url(blob) { const u = URL.createObjectURL(blob); objURLs.push(u); return u; }
 function clearURLs() { while (objURLs.length) URL.revokeObjectURL(objURLs.pop()); }
@@ -521,6 +529,7 @@ async function renderFoto(id) {
     </div></div>
     <div class="cap-bar">
       <button class="btn danger" id="cancelar">CANCELAR VISTORIA</button>
+      <button class="btn warn" id="descartar">DESCARTAR FOTO</button>
       <button class="btn" id="proxima">PRÓXIMA FOTO</button>
       <button class="btn sec" id="concluir">CONCLUIR VISTORIA</button>
     </div></div>`;
@@ -530,6 +539,7 @@ async function renderFoto(id) {
   $('#next').onclick = () => { if (idx < fotos.length - 1) location.replace('#/foto/' + fotos[idx + 1].id); };
   $('#proxima').onclick = () => requestCamera(vist.id);
   $('#cancelar').onclick = () => cancelarVistoria(vist, op);
+  $('#descartar').onclick = () => descartarFoto(foto, vist, op);
   $('#concluir').onclick = () => concluirVistoria(vist.id);
 }
 function fitStage(foto) {
@@ -603,16 +613,42 @@ function fullscreen(f) {
     }
     last = p;
   });
+  // Fecha no "click" (não no pointerup): se a tela cheia sumisse no pointerup, o
+  // click seguinte cairia nas áreas de áudio/observação que ficam por baixo.
+  let fechar = false;
   const up = e => {
     pts.delete(e.pointerId);
-    if (pts.size === 0) { if (!moved) ov.remove(); moved = false; }
+    if (pts.size === 0) { fechar = !moved; moved = false; }
   };
   ov.addEventListener('pointerup', up); ov.addEventListener('pointercancel', e => pts.delete(e.pointerId));
+  ov.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); if (fechar) ov.remove(); fechar = false; });
 }
 async function pausar(op) {
   if (recorder) return;
   toast('Vistoria pausada. Continue depois em "Continuar vistoria pausada".', 3500);
   location.hash = '#/op/' + op.id;
+}
+// Apaga só esta foto (com áudio e observação) e renumera as seguintes para não deixar lacuna.
+async function descartarFoto(foto, vist, op) {
+  if (recorder) return;
+  const ok = await dialog({ title: `Descartar foto ${codFoto(vist, foto)}?`,
+    html: '<p>Esta foto será apagada, junto com o áudio e a observação dela. As outras fotos da vistoria continuam.</p>',
+    buttons: [{ label: 'SIM, DESCARTAR FOTO', value: true, cls: 'danger' }, { label: 'NÃO', value: false, cls: 'sec' }] });
+  if (!ok) return;
+  await del('fotos', foto.id);
+  const resto = await fotosDe(vist.id);
+  for (const f of resto) if (f.seq > foto.seq) { f.seq -= 1; await put('fotos', f); }
+  const v = await get('vists', vist.id); v.atualizadoEm = Date.now();
+  const alvo = resto.filter(f => f.seq < foto.seq).pop() || resto[0];
+  v.ultimaFotoId = alvo ? alvo.id : null; await put('vists', v);
+  toast('Foto descartada.');
+  if (alvo) return location.replace('#/foto/' + alvo.id);
+  // Era a única foto: a vistoria continua aberta, sem fotos.
+  const r = await dialog({ title: 'Vistoria sem fotos', html: '<p>Esta vistoria não tem mais fotos. Ela continua aberta.</p>',
+    buttons: [{ label: '📷 Tirar nova foto', value: 'foto' }, { label: 'Voltar para a operação', value: 'op', cls: 'sec' }] });
+  if (r === 'foto' && freshFix()) return openCameraNow(vist.id);
+  location.replace('#/op/' + op.id);
+  if (r === 'foto') requestCamera(vist.id);
 }
 async function cancelarVistoria(vist, op) {
   const a = await dialog({ title: 'Cancelar vistoria?', html: '<p>Deseja cancelar a vistoria em andamento?</p>',
