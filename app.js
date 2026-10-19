@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.5.1';
+const APP_VERSION = '0.6.0';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -489,6 +489,21 @@ async function renderOp(id) {
   $('#consultar').onclick = () => { location.hash = '#/consulta?op=' + encodeURIComponent(op.numero); };
 }
 
+// Grade das fotos já tiradas durante a vistoria. Tocar numa foto volta à tela da foto, onde ela pode ser editada.
+async function renderGrade(vistId) {
+  const vist = await get('vists', vistId); if (!vist) return location.replace('#/');
+  if (vist.status !== 'aberta') return location.replace('#/vistoria/' + vistId);
+  const op = await get('ops', vist.opId), fotos = await fotosDe(vistId);
+  const voltar = () => { location.hash = '#/foto/' + (vist.ultimaFotoId && fotos.some(f => f.id === vist.ultimaFotoId) ? vist.ultimaFotoId : fotos[fotos.length - 1]?.id); };
+  setHeader(`${op.numero} · ${codVist(vist)} · fotos`, fotos.length ? voltar : '#/op/' + op.id);
+  startGeo();
+  view.innerHTML = `<p class="muted small">${fotos.length} foto(s) já tirada(s). Toque numa foto para abrir e editar a observação ou o áudio, ou para descartá-la.</p>
+    <div class="grid">${fotos.map(f => `<button class="thumb" data-foto="${f.id}" aria-label="${codFoto(vist, f)}"><img src="${url(toBlob(f.thumb))}" alt="">
+      <span class="tags">${f.audio ? '🎙' : ''}${f.obs ? '📝' : ''}</span><span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>
+    <div class="stack" style="margin-top:12px"><button class="btn" id="tirar">📷 PRÓXIMA FOTO</button></div>`;
+  view.querySelectorAll('[data-foto]').forEach(el => el.onclick = () => { location.hash = '#/foto/' + el.dataset.foto; });
+  $('#tirar').onclick = () => requestCamera(vistId);
+}
 async function renderPausadas(opId) {
   const op = await get('ops', opId);
   setHeader('Vistorias pausadas', '#/op/' + opId);
@@ -520,7 +535,8 @@ async function renderFoto(id) {
   view.innerHTML = `<div class="cap">
     <div class="cap-top">
       <button id="prev" ${idx <= 0 ? 'disabled style="opacity:.3"' : ''} aria-label="Foto anterior">‹</button>
-      <span>${codFoto(vist, foto)} · foto ${idx + 1} de ${fotos.length} · ${fmtTime(foto.tiradaEm)} · ±${Math.round(foto.geo.precisao)} m</span>
+      <span>${codFoto(vist, foto)} · ${fmtTime(foto.tiradaEm)} · ±${Math.round(foto.geo.precisao)}&nbsp;m</span>
+      <button id="grade" class="grade-btn" aria-label="Ver fotos já tiradas">▦ ${fotos.length}</button>
       <button id="next" ${idx >= fotos.length - 1 ? 'disabled style="opacity:.3"' : ''} aria-label="Próxima foto já tirada">›</button>
     </div>
     <div class="cap-mid" id="mid"><div class="stage" id="stage">
@@ -540,6 +556,7 @@ async function renderFoto(id) {
   $('#proxima').onclick = () => requestCamera(vist.id);
   $('#cancelar').onclick = () => cancelarVistoria(vist, op);
   $('#descartar').onclick = () => descartarFoto(foto, vist, op);
+  $('#grade').onclick = () => { location.hash = '#/grade/' + vist.id; };
   $('#concluir').onclick = () => concluirVistoria(vist.id);
 }
 function fitStage(foto) {
@@ -735,7 +752,8 @@ async function excluirOperacao(opId) {
 async function excluirVistoria(vistId) {
   const v = await get('vists', vistId), op = await get('ops', v.opId);
   const ok = await dialog({ title: 'Excluir vistoria?',
-    html: `<p>Deseja mesmo excluir a vistoria <b>${codVist(v)}</b> de ${fmtDate(v.data)} (${esc(op.numero)}) e todos os seus dados e registros?</p><p class="muted">ZIPs já gerados e salvos fora do app não são afetados.</p>`,
+    html: `<p>Deseja mesmo excluir a vistoria <b>${codVist(v)}</b> de ${fmtDate(v.data)} (${esc(op.numero)}) e todos os seus dados e registros?</p><p class="muted">ZIPs já gerados e salvos fora do app não são afetados.</p>
+      ${v.status === 'concluida' && !v.dadosExcluidosEm ? `<div class="notice"><b>Quer só liberar espaço no celular?</b> Entre na vistoria e toque em "Excluir fotos e dados do celular". Assim fica guardado pelo menos o registro de que a vistoria foi realizada.</div>` : ''}`,
     buttons: [{ label: 'Excluir vistoria', value: true, cls: 'danger' }, { label: 'Cancelar', value: false, cls: 'sec' }] });
   if (!ok) return false;
   await apagarVistoria(vistId); toast('Vistoria excluída.');
@@ -761,8 +779,11 @@ async function renderVistoria(id, params) {
     </div>
     <div class="notice">${NOTICE_LOCAL}</div>
     <div class="stack" id="acoes"></div>
-    ${fotos.length ? `<h2 style="margin-top:16px">Fotos</h2><div class="grid">${fotos.map(f => `<img src="${url(toBlob(f.thumb))}" alt="${codFoto(vist, f)}">`).join('')}</div>` : ''}
+    ${fotos.length ? `<h2 style="margin-top:16px">Fotos</h2><p class="muted small" style="margin-top:-6px">Toque numa foto para ver ${vist.status === 'aberta' ? 'e editar ' : ''}a observação e o áudio.</p>
+      <div class="grid">${fotos.map(f => `<button class="thumb" data-foto="${f.id}" aria-label="${codFoto(vist, f)}"><img src="${url(toBlob(f.thumb))}" alt="">
+        <span class="tags">${f.audio ? '🎙' : ''}${f.obs ? '📝' : ''}</span><span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>` : ''}
 `;
+  view.querySelectorAll('[data-foto]').forEach(el => el.onclick = async () => { await verFoto(vist.id, el.dataset.foto); route(); });
   const acoes = $('#acoes');
   const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; acoes.appendChild(b); };
   if (vist.status === 'aberta') add('Continuar vistoria', '', () => continuarVistoria(id));
@@ -771,6 +792,54 @@ async function renderVistoria(id, params) {
     add('Excluir fotos e dados do celular', 'danger', () => excluirFotos(vist.id));
   }
   if (params.get('gerar')) { history.replaceState(null, '', '#/vistoria/' + id); gerarZip(id, true); }
+}
+// Detalhe de uma foto na consulta. Vistoria concluída: só leitura.
+// Vistoria aberta (pausada): edita a observação e grava áudio (o novo substitui o anterior).
+async function verFoto(vistId, fotoId) {
+  for (;;) {
+    const vist = await get('vists', vistId), f = await get('fotos', fotoId); if (!f) return;
+    const editavel = vist.status === 'aberta', g = f.geo || {};
+    const p = dialog({ title: `Foto ${codFoto(vist, f)}`,
+      html: `<img class="det-img" src="${url(toBlob(f.jpg))}" alt="">
+        <p class="muted small">${fmtDT(f.tiradaEm)} · Lat ${g.lat?.toFixed(6)} · Lon ${g.lon?.toFixed(6)} (±${Math.round(g.precisao)} m)<br>Toque na foto para ampliar.</p>
+        ${editavel ? '' : '<div class="notice">Vistoria concluída: não é possível editar.</div>'}
+        <label>Observação escrita</label>
+        ${editavel ? `<textarea data-field="obs" placeholder="Escreva observações sobre esta foto…">${esc(f.obs)}</textarea>`
+          : `<p class="det-txt">${f.obs ? esc(f.obs) : '<span class="muted">Sem observação escrita.</span>'}</p>`}
+        <label>Áudio</label>
+        ${f.audio ? `<audio controls src="${url(toBlob(f.audio))}" style="width:100%"></audio>`
+          : '<p class="muted">Sem áudio.</p>'}`,
+      buttons: editavel ? [
+        { label: 'Salvar observação', value: x => ({ acao: 'salvar', obs: x.obs }) },
+        { label: f.audio ? '🎙 Gravar novo áudio (substitui o atual)' : '🎙 Gravar áudio', value: x => ({ acao: 'gravar', obs: x.obs }), cls: 'sec' },
+        { label: 'Fechar', value: x => ({ acao: 'fechar', obs: x.obs }), cls: 'sec' }]
+        : [{ label: 'Fechar', value: { acao: 'fechar' }, cls: 'sec' }] });
+    document.querySelector('.dialog .det-img').onclick = () => fullscreen(f);
+    const r = await p;
+    if (!r) return;
+    let obs = r.obs === undefined ? f.obs || '' : r.obs.trim();
+    if (editavel && r.acao === 'fechar' && obs !== (f.obs || '')) {
+      const salvar = await dialog({ title: 'Salvar a observação?', html: '<p>Você alterou a observação desta foto.</p>',
+        buttons: [{ label: 'Salvar', value: true }, { label: 'Descartar alteração', value: false, cls: 'sec' }] });
+      if (!salvar) obs = f.obs || '';
+    }
+    if (editavel && obs !== (f.obs || '')) {
+      const h = await get('fotos', fotoId); h.obs = obs; await put('fotos', h);
+      vist.atualizadoEm = Date.now(); await put('vists', vist);
+      if (r.acao === 'salvar') toast('Observação salva.');
+    }
+    if (r.acao === 'gravar') {
+      if (f.audio) {
+        const ok = await dialog({ title: 'Substituir áudio?', html: '<p>O áudio atual desta foto será apagado quando você concluir a nova gravação.</p>',
+          buttons: [{ label: 'Gravar novo áudio', value: true }, { label: 'Cancelar', value: false, cls: 'sec' }] });
+        if (!ok) continue;
+      }
+      await recordFor(f);
+      vist.atualizadoEm = Date.now(); await put('vists', vist);
+      continue;
+    }
+    if (r.acao === 'fechar') return;
+  }
 }
 async function gerarZip(vistId, recemConcluida = false) {
   const vist = await get('vists', vistId), op = await get('ops', vist.opId);
@@ -820,13 +889,14 @@ async function doRoute() {
   const [path, qs] = location.hash.slice(1).split('?');
   const [, kind, id] = (path || '/').split('/');
   const params = new URLSearchParams(qs || '');
-  if (!['op', 'foto', 'pausadas'].includes(kind)) stopGeo();
+  if (!['op', 'foto', 'pausadas', 'grade'].includes(kind)) stopGeo();
   try {
     if (kind === 'cadastro') await renderCadastro();
     else if (kind === 'selecionar') await renderSelecionar();
     else if (kind === 'op') await renderOp(id);
     else if (kind === 'pausadas') await renderPausadas(id);
     else if (kind === 'foto') await renderFoto(id);
+    else if (kind === 'grade') await renderGrade(id);
     else if (kind === 'consulta') await renderConsulta(params);
     else if (kind === 'vistoria') await renderVistoria(id, params);
     else await renderHome();
