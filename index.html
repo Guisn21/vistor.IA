@@ -107,7 +107,8 @@ body.capture main{padding:0;max-width:none}
   background:#222;color:#fff;padding:10px 14px;border-radius:10px;z-index:50;max-width:90vw;font-size:14px}
 .trash{background:var(--danger-bg);border:1px solid var(--line);color:var(--danger);border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer}
 .hidden{display:none!important}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.row2 input{min-width:0;max-width:100%}
 </style>
 </head>
 <body>

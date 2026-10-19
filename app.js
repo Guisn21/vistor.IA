@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.6.1';
+const APP_VERSION = '0.6.2';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -486,7 +486,7 @@ async function renderOp(id) {
     if (!abertas.length) return toast('Não há vistorias pausadas nesta operação.');
     location.hash = '#/pausadas/' + id;
   };
-  $('#consultar').onclick = () => { location.hash = '#/consulta?op=' + encodeURIComponent(op.numero); };
+  $('#consultar').onclick = () => { location.hash = '#/consulta/' + op.id; };
 }
 
 // Grade das fotos já tiradas durante a vistoria. Tocar numa foto volta à tela da foto, onde ela pode ser editada.
@@ -698,27 +698,22 @@ async function concluirVistoria(vistId) {
   location.replace('#/vistoria/' + vistId + '?gerar=1');
 }
 // --- Consulta ---
-async function renderConsulta(params) {
-  setHeader('Consultar vistorias', () => history.back());
-  const [ops, vists] = await Promise.all([all('ops'), all('vists')]);
-  const opById = Object.fromEntries(ops.map(o => [o.id, o]));
-  view.innerHTML = `<div class="card">
+// Consulta das vistorias de uma operação (aberta a partir da tela da operação): filtro só por data.
+async function renderConsulta(opId) {
+  const op = await get('ops', opId); if (!op) return location.replace('#/');
+  setHeader('Consultar vistorias', '#/op/' + opId);
+  const vists = await byIndex('vists', 'opId', opId);
+  view.innerHTML = `<div class="card"><b>${esc(op.numero)}</b><div>${esc(op.empreendimento)}</div><div class="muted small">${esc(op.tomador)}</div></div>
+    <div class="card">
       <div class="row2"><div><label>Data (de)</label><input id="fDe" type="date"></div><div><label>Data (até)</label><input id="fAte" type="date"></div></div>
-      <label>Operação</label><input id="fOp" inputmode="numeric" value="${esc(params.get('op') || '')}">
-      <label>Tomador</label><input id="fTom">
-      <label>Empreendimento</label><input id="fEmp">
       <div class="stack"><button class="btn sec" id="limpar">Limpar filtros</button></div></div>
     <div id="lista"></div>`;
   const draw = () => {
-    const de = $('#fDe').value, ate = $('#fAte').value, fo = $('#fOp').value.replace(/\D/g, ''), ft = norm($('#fTom').value), fe = norm($('#fEmp').value);
-    const list = vists.filter(v => {
-      const o = opById[v.opId]; if (!o) return false;
-      return (!de || v.data >= de) && (!ate || v.data <= ate) && (!fo || o.numero.replace(/\D/g, '').includes(fo))
-        && (!ft || norm(o.tomador).includes(ft)) && (!fe || norm(o.empreendimento).includes(fe));
-    }).sort((a, b) => b.data.localeCompare(a.data) || b.criadoEm - a.criadoEm);
-    $('#lista').innerHTML = list.length ? list.map(v => { const o = opById[v.opId]; return `<div class="card list-item" data-id="${v.id}">
-      <div><b>${fmtDate(v.data)} · ${esc(o.numero)} · ${codVist(v)}</b><div>${esc(o.empreendimento)}</div>
-        <div class="muted small">${esc(o.tomador)}${v.identificacao ? ' · ' + esc(v.identificacao) : ''}</div></div>
+    const de = $('#fDe').value, ate = $('#fAte').value;
+    const list = vists.filter(v => (!de || v.data >= de) && (!ate || v.data <= ate))
+      .sort((a, b) => b.data.localeCompare(a.data) || b.criadoEm - a.criadoEm);
+    $('#lista').innerHTML = list.length ? list.map(v => { return `<div class="card list-item" data-id="${v.id}">
+      <div><b>${fmtDate(v.data)} · ${codVist(v)}</b>${v.identificacao ? `<div>${esc(v.identificacao)}</div>` : ''}</div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">${statusBadge(v)}<button class="trash" data-del="${v.id}" aria-label="Excluir">${ICON.lixeira}</button></div></div>`; }).join('') : '<p class="muted">Nenhuma vistoria encontrada.</p>';
     $('#lista').querySelectorAll('[data-id]').forEach(el => el.onclick = async e => {
       const v = vists.find(x => x.id === el.dataset.id);
@@ -731,7 +726,6 @@ async function renderConsulta(params) {
     });
   };
   view.querySelectorAll('input').forEach(i => i.addEventListener('input', draw));
-  $('#fOp').addEventListener('input', e => { e.target.value = maskNumero(e.target.value); draw(); });
   $('#limpar').onclick = () => { view.querySelectorAll('.card input').forEach(i => { i.value = ''; }); draw(); };
   draw();
 }
@@ -880,7 +874,7 @@ async function excluirFotos(vistId) {
   const resto = { id: v.id, opId: v.opId, seq: v.seq, data: v.data, identificacao: v.identificacao || '', status: v.status, criadoEm: v.criadoEm, dadosExcluidosEm: Date.now() };
   await put('vists', resto);
   toast('Fotos e dados excluídos do celular.');
-  location.replace('#/consulta');
+  location.replace('#/consulta/' + v.opId);
 }
 
 // ---------- Roteamento ----------
@@ -901,7 +895,7 @@ async function doRoute() {
     else if (kind === 'pausadas') await renderPausadas(id);
     else if (kind === 'foto') await renderFoto(id);
     else if (kind === 'grade') await renderGrade(id);
-    else if (kind === 'consulta') await renderConsulta(params);
+    else if (kind === 'consulta') await renderConsulta(id);
     else if (kind === 'vistoria') await renderVistoria(id, params);
     else await renderHome();
   } catch (e) { view.innerHTML = `<div class="card">Erro: ${esc(e.message)}</div>`; console.error(e); }
