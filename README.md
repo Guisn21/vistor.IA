@@ -1,16 +1,18 @@
-# Vistor.IA Generator — v0.6.2
+# Vistor.IA Generator — v0.7.0
 
 App web instalável (PWA) para registrar vistorias no celular (Android e iPhone). Funciona sem internet e sem IA. Tudo fica no aparelho até o usuário baixar o ZIP.
 
 ## Fluxo
 - Tela principal: **Cadastrar operação** (tomador, número 0000.000-00, empreendimento) ou **Selecionar operação existente** (busca pelos 3 campos; lixeira para excluir).
-- Operação: **Início rápido de vistoria** (abre a câmera; data = hoje), **Continuar vistoria pausada**, **Consultar vistorias** (só as vistorias da operação; filtro por data de e até; lixeira para excluir).
-- Foto: só é salva com localização. Sobre a foto, três áreas: lupa (tela cheia), microfone (grava na hora, CONCLUIR vincula à foto) e observação escrita. Áudio e texto são opcionais e podem ser usados juntos.
+- Operação: **Iniciar vistoria** (abre a câmera do app; data = hoje), lápis para editar a operação, **Continuar vistoria pausada**, **Consultar vistorias** (só as vistorias da operação; filtro por data de e até; lixeira para excluir).
+- Foto: câmera dentro do app (um toque salva e abre a foto; botão de lente quando o celular oferece; reserva "Câmera do celular"). Sem GPS, o app avisa e a foto vai sem coordenadas. A bússola registra a direção da câmera.
+- Sobre a foto, três áreas: lupa (tela cheia), microfone (grava na hora, CONCLUIR vincula à foto) e observação escrita. Áudio e texto são opcionais e podem ser usados juntos.
 - Botões: Cancelar vistoria (confirmação dupla), Descartar foto, Próxima foto e Concluir vistoria (com identificação opcional).
 - Durante a vistoria, o botão ▦ (com o número de fotos) abre a grade das fotos já tiradas; tocar numa foto abre a foto para editar.
 - Na consulta, tocar numa foto mostra a observação e o áudio. Vistoria concluída: só leitura. Vistoria pausada: edita a observação e grava áudio novo (substitui o anterior).
 - O ícone de casa na barra superior volta direto para a tela principal.
-- Ao concluir, é gerado um ZIP com as fotos ("ddmmaaaa - hhmmss.jpg", GPS no EXIF), os áudios ("ddmmaaaa - hhmmss - audio.m4a") e o relatório .DOCX. No relatório, a coluna "Áudio" traz o nome do arquivo de áudio da foto (ou "—").
+- Concluir não gera o ZIP. O ZIP ("1095345-v01-ddmmaaaa-Identificacao.zip") sai pelo botão Baixar ZIP ou pela seta na consulta, com as fotos ("pic-ddmmaaaa-hhmmss.jpeg", GPS e direção no EXIF), os áudios ("aud-ddmmaaaa-hhmmss.m4a"), o relatório .DOCX e um mapa .kml (Google Earth) com uma seta por foto.
+- Vistoria concluída pode ser reaberta para editar; a identificação pode ser editada.
 - Numeração: operação → V01… → V01-F001…
 - Na consulta, "Excluir fotos e dados do celular" apaga fotos, áudios, coordenadas e observações. Ficam registrados a operação, o empreendimento, o tomador, a data e a identificação.
 

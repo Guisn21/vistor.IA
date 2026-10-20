@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.6.2';
+const APP_VERSION = '0.7.0';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -48,18 +48,18 @@ const fmtDur = s => `${Math.floor(s / 60)}:${pad(Math.round(s % 60))}`;
 // Numeração padronizada: Operação (nº) → Vistoria Vnn → Foto Fnnn → Áudio -A / Texto -T
 const codVist = v => 'V' + pad(v.seq);
 const codFoto = (v, f) => `${codVist(v)}-F${pad(f.seq, 3)}`;
-// Nome de arquivo: "ddmmaaaa - hhmmss"
+// Nome de arquivo: "ddmmaaaa-hhmmss"
 function stamp(ms) {
   const d = new Date(ms);
-  return `${pad(d.getDate())}${pad(d.getMonth() + 1)}${d.getFullYear()} - ${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${pad(d.getDate())}${pad(d.getMonth() + 1)}${d.getFullYear()}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function fileNames(fotos) {
-  // Fotos tiradas no mesmo segundo recebem " (2)", " (3)"…
+  // "pic-ddmmaaaa-hhmmss.jpeg"; fotos tiradas no mesmo segundo recebem " (2)", " (3)"…
   const seen = {}, out = {};
   for (const f of fotos) {
     const b = stamp(f.tiradaEm); seen[b] = (seen[b] || 0) + 1;
     const base = seen[b] > 1 ? `${b} (${seen[b]})` : b;
-    out[f.id] = { foto: base + '.jpg', audio: f.audio ? `${base} - audio.${audioExt(f.audio.type)}` : '' };
+    out[f.id] = { foto: `pic-${base}.jpeg`, audio: f.audio ? `aud-${base}.${audioExt(f.audio.type)}` : '' };
   }
   return out;
 }
@@ -124,6 +124,8 @@ const ICON = {
   mic: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   lixeira: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   texto: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>',
+  lapis: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>',
+  baixar: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
 };
 
 // ---------- Geolocalização ----------
@@ -157,18 +159,22 @@ function geoHelp(err) {
     : 'A localização do aparelho parece desligada. Puxe a barra de notificações e ative "Localização".';
   return 'Não foi possível obter a posição a tempo. Se estiver em local fechado, aproxime-se de uma janela ou área aberta e tente novamente.';
 }
-// Garante uma posição antes de abrir a câmera. Retorna true quando há posição.
+// Procura uma posição antes de abrir a câmera. Sem sinal, avisa que a foto vai sem coordenadas.
+// Retorna 'ok' (com posição), 'semgps' (usuário escolheu continuar sem) ou false (voltou).
+let ultimaFalhaGps = 0;
 async function ensureGeo() {
-  if (freshFix()) return true;
+  if (freshFix()) return 'ok';
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = '<div class="dialog"><h3>Verificando localização…</h3><p class="muted">Aguarde o GPS.</p></div>';
   document.body.appendChild(ov);
-  try { await getPosition(); ov.remove(); return true; }
+  // Se a última tentativa falhou há pouco (ex.: subsolo), espera menos antes de avisar.
+  const espera = Date.now() - ultimaFalhaGps < 120000 ? 5000 : 12000;
+  try { await getPosition(espera); ov.remove(); return 'ok'; }
   catch (err) {
-    ov.remove();
-    const r = await dialog({ title: 'Localização necessária', html: `<p>Fotos só podem ser registradas com localização.</p><p class="muted">${geoHelp(err)}</p>`,
-      buttons: [{ label: 'Tentar novamente', value: 'retry' }, { label: 'Voltar', value: 'no', cls: 'sec' }] });
-    return r === 'retry' ? ensureGeo() : false;
+    ov.remove(); ultimaFalhaGps = Date.now();
+    const r = await dialog({ title: 'Sem sinal de GPS', html: `<p>A próxima foto será tirada <b>sem coordenadas</b>, porque não há sinal de GPS.</p><p class="muted small">${geoHelp(err)}</p>`,
+      buttons: [{ label: 'Continuar', value: 'semgps' }, { label: 'Voltar', value: false, cls: 'sec' }] });
+    return r;
   }
 }
 function posToMeta(p) {
@@ -176,44 +182,188 @@ function posToMeta(p) {
   return { lat: c.latitude, lon: c.longitude, precisao: c.accuracy, altitude: c.altitude, obtidoEm: p.timestamp };
 }
 
+// ---------- Bússola ----------
+// Direção para onde a câmera traseira aponta, em graus a partir do norte magnético (sentido horário).
+let heading = null, headingEm = 0, bussolaOn = false;
+// Matriz de rotação do aparelho (W3C: Z-X'-Y''); a câmera traseira aponta para -Z do aparelho.
+function headingDe(alpha, beta, gamma) {
+  const r = Math.PI / 180, a = alpha * r, b = beta * r, g = gamma * r;
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
+  const leste = -ca * sg - sa * sb * cg, norte = -sa * sg + ca * sb * cg;
+  if (Math.hypot(leste, norte) < 0.3) return null; // câmera apontada quase na vertical: direção indefinida
+  return (Math.atan2(leste, norte) / r + 360) % 360;
+}
+function onOrientacao(e) {
+  let alpha = e.alpha;
+  if (typeof e.webkitCompassHeading === 'number') alpha = 360 - e.webkitCompassHeading; // iPhone (não verificado em aparelho)
+  else if (!e.absolute && e.type !== 'deviceorientationabsolute') return;
+  if (alpha == null || e.beta == null || e.gamma == null) return;
+  heading = headingDe(alpha, e.beta, e.gamma); headingEm = Date.now();
+}
+// No iPhone a permissão precisa ser pedida durante um toque; por isso é chamada no início dos botões.
+function pedirBussola() {
+  if (bussolaOn) return;
+  const ligar = () => {
+    if (bussolaOn) return; bussolaOn = true;
+    if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOrientacao);
+    else window.addEventListener('deviceorientation', onOrientacao);
+  };
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function')
+    DeviceOrientationEvent.requestPermission().then(r => { if (r === 'granted') ligar(); }).catch(() => {});
+  else ligar();
+}
+const headingAtual = () => heading !== null && Date.now() - headingEm < 3000 ? Math.round(heading) : null;
+const PONTOS = ['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'];
+const fmtDirecao = h => h == null ? '—' : `${PONTOS[Math.round(h / 45) % 8]} ${Math.round(h)}°`;
+
 // ---------- Câmera ----------
-// O seletor de arquivo só abre a câmera se for chamado durante o toque do usuário.
-// Por isso, quando já há posição recente, a câmera abre direto; senão, a posição é
-// obtida primeiro e um botão "Abrir câmera" aparece para o segundo toque.
-let pendingVistId = null;
-function openCameraNow(vistId) {
-  pendingVistId = vistId;
-  const inp = $('#camInput'); inp.value = ''; inp.click();
+// A câmera roda dentro do app: um toque no disparador salva a foto e abre a tela da foto.
+// O botão "Câmera do celular" usa o seletor do sistema (mais recursos, mas com a tela de aceitar).
+let pendingVistId = null, pendingSemGps = false;
+function openCameraNow(vistId, semGps = false) {
+  pedirBussola();
+  location.hash = `#/camera/${vistId}${semGps ? '?semgps=1' : ''}`;
 }
 async function requestCamera(vistId) {
-  if (freshFix()) return openCameraNow(vistId);
-  if (!(await ensureGeo())) return false;
-  const go = await dialog({ title: 'Localização OK', html: `<p>Precisão atual: ±${Math.round(lastFix.coords.accuracy)} m.</p>`,
-    buttons: [{ label: '📷 Abrir câmera', value: true }, { label: 'Voltar', value: false, cls: 'sec' }] });
-  if (go) openCameraNow(vistId);
-  return go;
+  pedirBussola();
+  if (freshFix()) { openCameraNow(vistId); return true; }
+  const g = await ensureGeo();
+  if (!g) return false;
+  openCameraNow(vistId, g === 'semgps');
+  return true;
+}
+function cameraDoCelular(vistId, semGps) {
+  pendingVistId = vistId; pendingSemGps = semGps;
+  const inp = $('#camInput'); inp.value = ''; inp.click();
 }
 $('#camInput').onchange = async e => {
   const file = e.target.files[0], vistId = pendingVistId;
   if (!file || !vistId) return;
-  const tiradaEm = Date.now();
-  // Posição no momento em que a foto voltou da câmera. Sem posição, a foto não é salva.
+  // Direção não registrada: a bússola só seria lida depois que a foto volta do app da câmera.
+  const tiradaEm = Date.now(), dir = null;
+  // Posição no momento em que a foto voltou da câmera. Sem sinal, é salva sem coordenadas.
   let pos = freshFix();
-  while (!pos) {
-    try { pos = await getPosition(); }
+  if (!pos && !pendingSemGps) {
+    try { pos = await getPosition(8000); }
     catch (err) {
-      const r = await dialog({ title: 'Foto sem localização', html: `<p>A foto ainda não foi salva porque não há localização.</p><p class="muted">${geoHelp(err)}</p>`,
-        buttons: [{ label: 'Tentar novamente', value: 'retry' }, { label: 'Descartar foto', value: 'discard', cls: 'danger' }] });
+      const r = await dialog({ title: 'Sem sinal de GPS', html: `<p>Não há sinal de GPS agora. A foto será salva <b>sem coordenadas</b>.</p>`,
+        buttons: [{ label: 'Salvar sem coordenadas', value: 'ok' }, { label: 'Descartar foto', value: 'discard', cls: 'danger' }] });
       if (r === 'discard') return;
     }
   }
   toast('Salvando foto…', 1500);
   try {
-    const foto = await savePhoto(file, vistId, posToMeta(pos), tiradaEm);
-    location.hash = `#/foto/${foto.id}`;
+    const foto = await savePhoto(file, vistId, pos ? posToMeta(pos) : null, tiradaEm, dir);
+    location.replace(`#/foto/${foto.id}`);
   } catch (err) { toast('Erro ao salvar a foto: ' + err.message, 6000); }
 };
 
+const cam = { stream: null, devices: [], idx: -1, semGps: false, vistId: null, ocupado: false };
+function fecharCamera() {
+  cam.stream?.getTracks().forEach(t => t.stop()); cam.stream = null;
+}
+async function abrirStream() {
+  cam.stream?.getTracks().forEach(t => t.stop()); cam.stream = null;
+  const dev = cam.devices[cam.idx];
+  const video = { width: { ideal: 4096 }, height: { ideal: 3072 } };
+  if (dev) video.deviceId = { exact: dev.deviceId }; else video.facingMode = { ideal: 'environment' };
+  cam.stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+  const v = $('#camVideo'); if (!v) return fecharCamera();
+  v.srcObject = cam.stream; await v.play().catch(() => {});
+  if (!cam.devices.length) {
+    // Só depois da permissão os nomes das câmeras aparecem. Câmeras frontais ficam de fora.
+    const todas = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    cam.devices = todas.filter(d => !/front|frontal|user|facetime|selfie/i.test(d.label));
+    if (!cam.devices.length) cam.devices = todas;
+    const atual = cam.stream.getVideoTracks()[0]?.getSettings().deviceId;
+    cam.idx = Math.max(0, cam.devices.findIndex(d => d.deviceId === atual));
+  }
+  atualizarLente();
+}
+function atualizarLente() {
+  const b = $('#camLente'); if (!b) return;
+  b.classList.toggle('hidden', cam.devices.length < 2);
+  const d = cam.devices[cam.idx];
+  b.innerHTML = `Lente ${cam.idx + 1}/${cam.devices.length}${d?.label ? `<small>${esc(d.label.slice(0, 28))}</small>` : ''}`;
+}
+async function renderCamera(vistId, params) {
+  const vist = await get('vists', vistId); if (!vist) return location.replace('#/');
+  if (vist.status !== 'aberta') return location.replace('#/vistoria/' + vistId);
+  const op = await get('ops', vist.opId), fotos = await fotosDe(vistId);
+  if (cam.vistId !== vistId) { cam.semGps = false; cam.vistId = vistId; }
+  if (params.get('semgps')) cam.semGps = true;
+  const sair = async () => {
+    const v = await get('vists', vistId), fs = await fotosDe(vistId);
+    if (fs.length) return location.replace('#/foto/' + (fs.some(f => f.id === v.ultimaFotoId) ? v.ultimaFotoId : fs[fs.length - 1].id));
+    if (!v.teveFotos) { await del('vists', vistId); toast('Vistoria sem fotos descartada.'); }
+    location.replace('#/op/' + op.id);
+  };
+  setHeader(`${op.numero} · ${codVist(vist)}`, sair);
+  document.body.classList.add('capture');
+  startGeo();
+  view.innerHTML = `<div class="cam">
+    <div class="cam-top"><span id="camGps">GPS…</span><span id="camDir">🧭 —</span><button id="camLente" class="hidden"></button></div>
+    <div class="cam-view"><video id="camVideo" playsinline muted autoplay></video><div class="cam-flash" id="camFlash"></div>
+      <div class="cam-erro hidden" id="camErro"></div></div>
+    <div class="cam-bottom">
+      <div class="cam-row">
+        <button class="cam-side" id="camNativa">Câmera do<br>celular</button>
+        <button class="shutter" id="shutter" aria-label="Disparar"><span></span></button>
+        <button class="cam-side" id="camGrade" ${fotos.length ? '' : 'disabled'}>▦ ${fotos.length}<br><small>fotos</small></button>
+      </div></div></div>`;
+  $('#camLente').onclick = async () => { cam.idx = (cam.idx + 1) % cam.devices.length; await iniciar(); };
+  $('#camNativa').onclick = () => { pedirBussola(); cameraDoCelular(vistId, cam.semGps); };
+  $('#camGrade').onclick = () => { location.hash = '#/grade/' + vistId; };
+  $('#shutter').onclick = () => dispararFoto(vistId);
+  // Indicadores de GPS e bússola
+  const tick = setInterval(() => {
+    if (!$('#camGps')) return clearInterval(tick);
+    const f = freshFix();
+    $('#camGps').textContent = f ? `GPS ±${Math.round(f.coords.accuracy)} m` : 'Sem sinal de GPS';
+    $('#camGps').classList.toggle('sem', !f);
+    $('#camDir').textContent = '🧭 ' + fmtDirecao(headingAtual());
+  }, 500);
+  async function iniciar() {
+    try { $('#camErro').classList.add('hidden'); await abrirStream(); }
+    catch (err) {
+      const e = $('#camErro'); if (!e) return;
+      e.classList.remove('hidden');
+      e.innerHTML = `<p>Não foi possível abrir a câmera dentro do app.</p><p class="small">${esc(err.message || err.name)}</p>
+        <p class="small">Permita o uso da câmera para este site nas configurações do navegador, ou use o botão "Câmera do celular".</p>`;
+    }
+  }
+  await iniciar();
+}
+// Sem sinal de GPS no disparo: avisa uma vez; "Continuar" vale até o fim desta vistoria.
+async function confirmarSemGps() {
+  if (freshFix() || cam.semGps) return true;
+  const r = await dialog({ title: 'Sem sinal de GPS', html: '<p>A próxima foto será tirada <b>sem coordenadas</b>, porque não há sinal de GPS.</p>',
+    buttons: [{ label: 'Continuar', value: true }, { label: 'Voltar', value: false, cls: 'sec' }] });
+  if (r) cam.semGps = true;
+  return r;
+}
+function quadroAtual() {
+  const v = $('#camVideo'); const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+  return c;
+}
+async function dispararFoto(vistId) {
+  if (cam.ocupado || !cam.stream) return;
+  if (!(await confirmarSemGps())) return;
+  cam.ocupado = true;
+  const tiradaEm = Date.now(), pos = freshFix(), dir = headingAtual();
+  const fl = $('#camFlash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
+  try {
+    let blob = null;
+    const track = cam.stream.getVideoTracks()[0];
+    // Chrome/Android: ImageCapture tira a foto na resolução do sensor. Outros: quadro do vídeo.
+    if ('ImageCapture' in window) { try { blob = await new ImageCapture(track).takePhoto(); } catch { blob = null; } }
+    if (!blob) blob = await new Promise(res => quadroAtual().toBlob(res, 'image/jpeg', 0.95));
+    const foto = await savePhoto(blob, vistId, pos ? posToMeta(pos) : null, tiradaEm, dir);
+    location.replace('#/foto/' + foto.id);
+  } catch (err) { toast('Erro ao salvar a foto: ' + err.message, 6000); }
+  finally { cam.ocupado = false; }
+}
 // ---------- Imagem + EXIF ----------
 function dataURLToBuf(d) {
   const bin = atob(d.split(',')[1]); const a = new Uint8Array(bin.length);
@@ -242,15 +392,15 @@ async function normalizeImage(file) {
     return { jpg, thumb: tc.toDataURL('image/jpeg', 0.75), w, h };
   } finally { URL.revokeObjectURL(u); }
 }
-async function savePhoto(file, vistId, geo, tiradaEm) {
+async function savePhoto(file, vistId, geo, tiradaEm, direcao = null) {
   const fotos = await fotosDe(vistId);
   const seq = fotos.reduce((m, f) => Math.max(m, f.seq), 0) + 1;
   const { jpg, thumb, w, h } = await normalizeImage(file);
-  const foto = { id: uid(), vistId, seq, tiradaEm, geo, largura: w, altura: h,
+  const foto = { id: uid(), vistId, seq, tiradaEm, geo, direcao, largura: w, altura: h,
     jpg: { buf: dataURLToBuf(jpg), type: 'image/jpeg' }, thumb: { buf: dataURLToBuf(thumb), type: 'image/jpeg' },
     obs: '', audio: null };
   await put('fotos', foto);
-  const v = await get('vists', vistId); v.ultimaFotoId = foto.id; v.atualizadoEm = Date.now(); await put('vists', v);
+  const v = await get('vists', vistId); Object.assign(v, { ultimaFotoId: foto.id, atualizadoEm: Date.now(), teveFotos: true }); await put('vists', v);
   return foto;
 }
 const toAscii = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, ' ');
@@ -267,6 +417,8 @@ function jpegWithExif(foto, op, vist) {
   ex[piexif.ExifIFD.DateTimeOriginal] = exifDate(foto.tiradaEm);
   ex[piexif.ExifIFD.DateTimeDigitized] = exifDate(foto.tiradaEm);
   gps[G.GPSVersionID] = [2, 3, 0, 0];
+  if (foto.direcao != null) { gps[G.GPSImgDirectionRef] = 'M'; gps[G.GPSImgDirection] = [Math.round(foto.direcao * 100), 100]; }
+  if (!g) return dataURLToBuf(piexif.insert(piexif.dump({ '0th': z, Exif: ex, ...(foto.direcao != null ? { GPS: gps } : {}) }), 'data:image/jpeg;base64,' + bufToB64(foto.jpg.buf)));
   gps[G.GPSLatitudeRef] = g.lat < 0 ? 'S' : 'N'; gps[G.GPSLatitude] = deg2dms(g.lat);
   gps[G.GPSLongitudeRef] = g.lon < 0 ? 'W' : 'E'; gps[G.GPSLongitude] = deg2dms(g.lon);
   if (typeof g.altitude === 'number') { gps[G.GPSAltitudeRef] = g.altitude < 0 ? 1 : 0; gps[G.GPSAltitude] = [Math.round(Math.abs(g.altitude) * 100), 100]; }
@@ -343,16 +495,16 @@ async function buildDocx(op, vist, fotos, names) {
   const tGeral = new Table({ width: { size: W, type: WidthType.DXA }, columnWidths: [3200, W - 3200],
     rows: geral.map(([k, v]) => new TableRow({ children: [cell(k, 3200, { head: true }), cell(v, W - 3200)] })) });
   const cols = [
-    ['Código', 1150], ['Arquivo da foto', 2000], ['Horário', 1000], ['Coordenadas (precisão)', 2000],
-    ['Áudio', 2700], ['Observação escrita', 0],
+    ['Código', 1150], ['Arquivo da foto', 2000], ['Horário', 950], ['Coordenadas (precisão)', 2000],
+    ['Direção (bússola)', 1250], ['Áudio', 2300], ['Observação escrita', 0],
   ];
-  cols[5][1] = W - cols.slice(0, 5).reduce((s, c) => s + c[1], 0);
+  cols[6][1] = W - cols.slice(0, 6).reduce((s, c) => s + c[1], 0);
   const rows = [new TableRow({ tableHeader: true, children: cols.map(([t, w]) => cell(t, w, { head: true })) })];
   for (const f of fotos) {
     const g = f.geo;
     const vals = [codFoto(vist, f), names[f.id].foto, fmtTime(f.tiradaEm),
-      `Lat ${g.lat.toFixed(6)}\nLon ${g.lon.toFixed(6)}\n(±${Math.round(g.precisao)} m)`,
-      names[f.id].audio || '—', f.obs || '—'];
+      g ? `Lat ${g.lat.toFixed(6)}\nLon ${g.lon.toFixed(6)}\n(±${Math.round(g.precisao)} m)` : 'Sem coordenadas (sem sinal de GPS)',
+      fmtDirecao(f.direcao), names[f.id].audio || '—', f.obs || '—'];
     rows.push(new TableRow({ cantSplit: true, children: vals.map((v, i) => cell(v, cols[i][1])) }));
   }
   const tFotos = new Table({ width: { size: W, type: WidthType.DXA }, columnWidths: cols.map(c => c[1]), rows });
@@ -365,13 +517,35 @@ async function buildDocx(op, vist, fotos, names) {
         tGeral,
         new Paragraph({ children: [new TextRun({ text: 'Registros fotográficos', bold: true, size: 22 })], spacing: { before: 300, after: 120 } }),
         tFotos,
-        new Paragraph({ children: [new TextRun({ text: `Gerado por Vistor.IA Generator ${APP_VERSION} em ${fmtDT(Date.now())}. Coordenadas em WGS-84. Os arquivos de foto e áudio citados estão no mesmo ZIP deste relatório.`, size: 16, italics: true })], spacing: { before: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: `Gerado por Vistor.IA Generator ${APP_VERSION} em ${fmtDT(Date.now())}. Coordenadas em WGS-84. Direção da câmera medida pela bússola do celular, em relação ao norte magnético; pode ter erro perto de estruturas metálicas. Os arquivos de foto e áudio citados e o mapa (.kml) estão no mesmo ZIP deste relatório.`, size: 16, italics: true })], spacing: { before: 200 } }),
       ],
     }],
   });
   return Packer.toBlob(doc);
 }
-const zipName = (op, vist) => `Vistoria ${op.numero} ${codVist(vist)} ${stamp(Date.parse(vist.data + 'T12:00')).slice(0, 8)}.zip`;
+// "1095345-v01-ddmmaaaa-Identificação.zip": operação só com os 7 primeiros dígitos, código da vistoria, data e identificação (se houver).
+// Sem acentos: no teste, o Chromium trocou por "download" o nome de arquivo com acento.
+const nomeArquivo = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 150);
+const zipName = (op, vist) => nomeArquivo([op.numero.replace(/\D/g, '').slice(0, 7), codVist(vist).toLowerCase(),
+  stamp(Date.parse(vist.data + 'T12:00')).slice(0, 8), vist.identificacao].filter(Boolean).join('-')) + '.zip';
+// Mapa para o Google Earth: um marcador por foto com coordenadas; seta girada para a direção da câmera.
+const xml = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function buildKml(op, vist, fotos, names) {
+  const marcas = fotos.filter(f => f.geo).map(f => {
+    const g = f.geo, dir = f.direcao;
+    const estilo = dir != null ? `<Style><IconStyle><heading>${dir}</heading><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle></Style>` : '';
+    const desc = [`Foto: ${names[f.id].foto}`, `Horário: ${fmtDT(f.tiradaEm)}`, `Precisão: ±${Math.round(g.precisao)} m`,
+      `Direção: ${dir != null ? fmtDirecao(dir) + ' (norte magnético)' : 'não registrada'}`, f.audio ? `Áudio: ${names[f.id].audio}` : '', f.obs ? `Observação: ${f.obs}` : ''].filter(Boolean).join('\n');
+    return `  <Placemark><name>${xml(codFoto(vist, f))}</name><description>${xml(desc)}</description>${estilo}<Point><coordinates>${g.lon},${g.lat},0</coordinates></Point></Placemark>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <name>${xml(`${op.numero} ${codVist(vist)} ${fmtDate(vist.data)}${vist.identificacao ? ' - ' + vist.identificacao : ''}`)}</name>
+  <description>${xml(`${op.empreendimento} | ${op.tomador}. Setas: direção da câmera pela bússola do celular (norte magnético).`)}</description>
+${marcas.join('\n')}
+</Document></kml>
+`;
+}
 async function buildZip(op, vist, fotos) {
   const names = fileNames(fotos);
   const zip = new JSZip();
@@ -381,6 +555,7 @@ async function buildZip(op, vist, fotos) {
   }
   const docx = await buildDocx(op, vist, fotos, names);
   zip.file(`Relatorio ${op.numero} ${codVist(vist)}.docx`, docx);
+  if (fotos.some(f => f.geo)) zip.file(zipName(op, vist).replace(/\.zip$/, '.kml'), buildKml(op, vist, fotos, names));
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
   return new File([blob], zipName(op, vist), { type: 'application/zip' });
 }
@@ -419,19 +594,25 @@ function maskNumero(v) {
   if (d.length > 7) o += '-' + d.slice(7, 9);
   return o;
 }
-async function renderCadastro() {
-  setHeader('Cadastrar operação', '#/');
+// Cadastro de operação; com editId, edita uma operação existente.
+async function renderCadastro(editId) {
+  const ed = editId ? await get('ops', editId) : null;
+  if (editId && !ed) return location.replace('#/');
+  setHeader(ed ? 'Editar operação' : 'Cadastrar operação', ed ? '#/op/' + ed.id : '#/');
   view.innerHTML = `<div class="card">
-    <label>Tomador *</label><input id="tom" maxlength="256" autocomplete="off">
-    <label>Número da operação *</label><input id="num" inputmode="numeric" placeholder="0000.000-00" maxlength="11" autocomplete="off">
-    <label>Empreendimento *</label><input id="emp" maxlength="256" autocomplete="off">
-    <div class="stack"><button class="btn" id="salvar">Salvar operação</button></div></div>`;
+    <label>Tomador *</label><input id="tom" maxlength="256" autocomplete="off" value="${esc(ed?.tomador || '')}">
+    <label>Número da operação *</label><input id="num" inputmode="numeric" placeholder="0000.000-00" maxlength="11" autocomplete="off" value="${esc(ed?.numero || '')}">
+    <label>Empreendimento *</label><input id="emp" maxlength="256" autocomplete="off" value="${esc(ed?.empreendimento || '')}">
+    <div class="stack"><button class="btn" id="salvar">${ed ? 'Salvar alterações' : 'Salvar operação'}</button>${ed ? '<button class="btn sec" id="cancelarEd">Cancelar</button>' : ''}</div></div>
+    ${ed ? '<p class="muted small">As alterações valem também para as vistorias já registradas desta operação e para os próximos ZIPs gerados. ZIPs já baixados não mudam.</p>' : ''}`;
+  if (ed) $('#cancelarEd').onclick = () => location.replace('#/op/' + ed.id);
   $('#num').addEventListener('input', e => { e.target.value = maskNumero(e.target.value); });
   $('#salvar').onclick = async () => {
     const tomador = $('#tom').value.trim(), numero = $('#num').value, empreendimento = $('#emp').value.trim();
     if (!tomador || !empreendimento) return toast('Preencha tomador e empreendimento.');
     if (!/^\d{4}\.\d{3}-\d{2}$/.test(numero)) return toast('Número da operação incompleto (0000.000-00).');
-    if ((await all('ops')).some(o => o.numero === numero)) return toast('Já existe uma operação com esse número.', 4000);
+    if ((await all('ops')).some(o => o.numero === numero && o.id !== ed?.id)) return toast('Já existe uma operação com esse número.', 4000);
+    if (ed) { Object.assign(ed, { tomador, numero, empreendimento, atualizadoEm: Date.now() }); await put('ops', ed); toast('Operação atualizada.'); return location.replace('#/op/' + ed.id); }
     const op = { id: uid(), tomador, numero, empreendimento, vistSeq: 0, criadoEm: Date.now() };
     await put('ops', op);
     location.replace('#/op/' + op.id);
@@ -470,15 +651,20 @@ async function renderOp(id) {
   startGeo();
   const abertas = (await byIndex('vists', 'opId', id)).filter(v => v.status === 'aberta');
   view.innerHTML = `
-    <div class="card"><b>${esc(op.numero)}</b><div>${esc(op.empreendimento)}</div><div class="muted small">${esc(op.tomador)}</div></div>
-    <button class="btn big" id="rapido">📷 INÍCIO RÁPIDO DE VISTORIA</button>
+    <div class="card" style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b>${esc(op.numero)}</b><div>${esc(op.empreendimento)}</div><div class="muted small">${esc(op.tomador)}</div></div>
+      <button class="edit" id="editarOp" aria-label="Editar operação">${ICON.lapis}</button></div>
+    <button class="btn big" id="rapido">📷 INICIAR VISTORIA</button>
     <button class="btn big sec" id="pausada">CONTINUAR VISTORIA PAUSADA${abertas.length ? ` (${abertas.length})` : ''}</button>
     <button class="btn big sec" id="consultar">CONSULTAR VISTORIAS</button>`;
+  $('#editarOp').onclick = () => { location.hash = '#/cadastro/' + op.id; };
   $('#rapido').onclick = async () => {
+    pedirBussola();
     // Com posição recente, a câmera abre no mesmo toque.
     if (freshFix()) { const v = await novaVistoria(op); return openCameraNow(v.id); }
-    if (!(await ensureGeo())) return;
+    const g = await ensureGeo();
+    if (!g) return;
     const v = await novaVistoria(op);
+    if (g === 'semgps') return openCameraNow(v.id, true);
     const opened = await requestCamera(v.id);
     if (!opened) { await del('vists', v.id); }
   };
@@ -539,7 +725,7 @@ async function renderFoto(id) {
   view.innerHTML = `<div class="cap">
     <div class="cap-top">
       <button id="prev" ${idx <= 0 ? 'disabled style="opacity:.3"' : ''} aria-label="Foto anterior">‹</button>
-      <span>${codFoto(vist, foto)} · ${fmtTime(foto.tiradaEm)} · ±${Math.round(foto.geo.precisao)}&nbsp;m</span>
+      <span>${codFoto(vist, foto)} · ${fmtTime(foto.tiradaEm)} · ${foto.geo ? `±${Math.round(foto.geo.precisao)}&nbsp;m` : 'sem GPS'}</span>
       <button id="grade" class="grade-btn" aria-label="Ver fotos já tiradas">▦ ${fotos.length}</button>
       <button id="next" ${idx >= fotos.length - 1 ? 'disabled style="opacity:.3"' : ''} aria-label="Próxima foto já tirada">›</button>
     </div>
@@ -548,9 +734,9 @@ async function renderFoto(id) {
       <div class="zones" id="zones"></div>
     </div></div>
     <div class="cap-bar">
+      <button class="btn proxima" id="proxima">📷 PRÓXIMA FOTO</button>
       <button class="btn danger" id="cancelar">CANCELAR VISTORIA</button>
       <button class="btn warn" id="descartar">DESCARTAR FOTO</button>
-      <button class="btn" id="proxima">PRÓXIMA FOTO</button>
       <button class="btn sec" id="concluir">CONCLUIR VISTORIA</button>
     </div></div>`;
   fitStage(foto);
@@ -695,7 +881,8 @@ async function concluirVistoria(vistId) {
     buttons: [{ label: 'CONFIRMAR CONCLUSÃO', value: x => x.ident }, { label: 'VOLTAR', value: null, cls: 'sec' }] });
   if (ident === null) return;
   Object.assign(vist, { identificacao: ident.trim(), status: 'concluida', concluidoEm: Date.now() }); await put('vists', vist);
-  location.replace('#/vistoria/' + vistId + '?gerar=1');
+  toast('Vistoria concluída. Baixe o ZIP quando quiser.', 3500);
+  location.replace('#/vistoria/' + vistId);
 }
 // --- Consulta ---
 // Consulta das vistorias de uma operação (aberta a partir da tela da operação): filtro só por data.
@@ -714,9 +901,10 @@ async function renderConsulta(opId) {
       .sort((a, b) => b.data.localeCompare(a.data) || b.criadoEm - a.criadoEm);
     $('#lista').innerHTML = list.length ? list.map(v => { return `<div class="card list-item" data-id="${v.id}">
       <div><b>${fmtDate(v.data)} · ${codVist(v)}</b>${v.identificacao ? `<div>${esc(v.identificacao)}</div>` : ''}</div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">${statusBadge(v)}<button class="trash" data-del="${v.id}" aria-label="Excluir">${ICON.lixeira}</button></div></div>`; }).join('') : '<p class="muted">Nenhuma vistoria encontrada.</p>';
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">${statusBadge(v)}<div style="display:flex;gap:8px">${v.status === 'concluida' && !v.dadosExcluidosEm ? `<button class="dl" data-dl="${v.id}" aria-label="Baixar ZIP">${ICON.baixar}</button>` : ''}<button class="trash" data-del="${v.id}" aria-label="Excluir">${ICON.lixeira}</button></div></div></div>`; }).join('') : '<p class="muted">Nenhuma vistoria encontrada.</p>';
     $('#lista').querySelectorAll('[data-id]').forEach(el => el.onclick = async e => {
       const v = vists.find(x => x.id === el.dataset.id);
+      if (e.target.closest('[data-dl]')) return gerarZip(v.id);
       if (e.target.closest('[data-del]')) {
         if (await excluirVistoria(v.id)) { vists.splice(vists.indexOf(v), 1); draw(); }
         return;
@@ -772,7 +960,8 @@ async function renderVistoria(id, params) {
     <div class="card">
       <div style="display:flex;justify-content:space-between;gap:8px"><b>Vistoria ${codVist(vist)} · ${fmtDate(vist.data)}</b>${statusBadge(vist)}</div>
       <div>${esc(op.empreendimento)}</div><div class="muted small">${esc(op.tomador)} · ${esc(op.numero)}</div>
-      ${vist.identificacao ? `<div style="margin-top:6px">${esc(vist.identificacao)}</div>` : ''}
+      <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${vist.identificacao ? esc(vist.identificacao) : '<span class="muted">Sem identificação</span>'}</span>
+        <button class="edit" id="editarIdent" aria-label="Editar identificação">${ICON.lapis}</button></div>
       <div class="muted small" style="margin-top:6px">${fotos.length} foto(s)${vist.concluidoEm ? ' · concluída em ' + fmtDT(vist.concluidoEm) : ''}</div>
     </div>
     <div class="notice">${NOTICE_LOCAL}</div>
@@ -786,20 +975,28 @@ async function renderVistoria(id, params) {
   const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; acoes.appendChild(b); };
   if (vist.status === 'aberta') add('Continuar vistoria', '', () => continuarVistoria(id));
   if (vist.status === 'concluida') {
-    add('Baixar ZIP', '', () => gerarZip(vist.id));
+    add('⬇︎ Baixar ZIP', '', () => gerarZip(vist.id));
+    add('Reabrir vistoria para editar', 'sec', () => reabrirVistoria(vist.id));
     add('Excluir fotos e dados do celular', 'danger', () => excluirFotos(vist.id));
   }
-  if (params.get('gerar')) { history.replaceState(null, '', '#/vistoria/' + id); gerarZip(id, true); }
+  $('#editarIdent').onclick = async () => {
+    const ident = await dialog({ title: 'Identificação da vistoria',
+      html: `<input data-field="ident" maxlength="256" placeholder="ex.: Medição 3, boletim 9, liberação de glosa" value="${esc(vist.identificacao)}">`,
+      buttons: [{ label: 'Salvar', value: x => x.ident }, { label: 'Cancelar', value: null, cls: 'sec' }] });
+    if (ident === null) return;
+    const v = await get('vists', id); v.identificacao = ident.trim(); v.atualizadoEm = Date.now(); await put('vists', v);
+    toast('Identificação salva.'); route();
+  };
 }
 // Detalhe de uma foto na consulta. Vistoria concluída: só leitura.
 // Vistoria aberta (pausada): edita a observação e grava áudio (o novo substitui o anterior).
 async function verFoto(vistId, fotoId) {
   for (;;) {
     const vist = await get('vists', vistId), f = await get('fotos', fotoId); if (!f) return;
-    const editavel = vist.status === 'aberta', g = f.geo || {};
+    const editavel = vist.status === 'aberta', g = f.geo;
     const p = dialog({ title: `Foto ${codFoto(vist, f)}`,
       html: `<img class="det-img" src="${url(toBlob(f.jpg))}" alt="">
-        <p class="muted small">${fmtDT(f.tiradaEm)} · Lat ${g.lat?.toFixed(6)} · Lon ${g.lon?.toFixed(6)} (±${Math.round(g.precisao)} m)<br>Toque na foto para ampliar.</p>
+        <p class="muted small">${fmtDT(f.tiradaEm)} · ${g ? `Lat ${g.lat.toFixed(6)} · Lon ${g.lon.toFixed(6)} (±${Math.round(g.precisao)} m)` : 'Sem coordenadas (sem sinal de GPS)'}<br>Toque na foto para ampliar.${f.direcao != null ? ` · Direção ${fmtDirecao(f.direcao)} (norte magnético)` : ''}</p>
         ${editavel ? '' : '<div class="notice">Vistoria concluída: não é possível editar.</div>'}
         <label>Observação escrita</label>
         ${editavel ? `<textarea data-field="obs" placeholder="Escreva observações sobre esta foto…">${esc(f.obs)}</textarea>`
@@ -838,6 +1035,17 @@ async function verFoto(vistId, fotoId) {
     }
     if (r.acao === 'fechar') return;
   }
+}
+// Volta a vistoria concluída para "aberta" (pausada), para editar, excluir ou incluir fotos.
+async function reabrirVistoria(vistId) {
+  const ok = await dialog({ title: 'Reabrir vistoria?',
+    html: '<p>A vistoria volta a ficar <b>pausada</b>. Você poderá editar observações e áudios, descartar fotos e tirar novas.</p><p class="muted">Ao terminar, conclua de novo e baixe um novo ZIP. ZIPs já baixados não mudam.</p>',
+    buttons: [{ label: 'Reabrir vistoria', value: true }, { label: 'Cancelar', value: false, cls: 'sec' }] });
+  if (!ok) return;
+  const v = await get('vists', vistId);
+  Object.assign(v, { status: 'aberta', concluidoEm: null, reabertaEm: Date.now(), atualizadoEm: Date.now() }); await put('vists', v);
+  toast('Vistoria reaberta.');
+  continuarVistoria(vistId);
 }
 async function gerarZip(vistId, recemConcluida = false) {
   const vist = await get('vists', vistId), op = await get('ops', vist.opId);
@@ -887,14 +1095,16 @@ async function doRoute() {
   const [path, qs] = location.hash.slice(1).split('?');
   const [, kind, id] = (path || '/').split('/');
   const params = new URLSearchParams(qs || '');
-  if (!['op', 'foto', 'pausadas', 'grade'].includes(kind)) stopGeo();
+  if (!['op', 'foto', 'pausadas', 'grade', 'camera'].includes(kind)) stopGeo();
+  if (kind !== 'camera') fecharCamera();
   try {
-    if (kind === 'cadastro') await renderCadastro();
+    if (kind === 'cadastro') await renderCadastro(id);
     else if (kind === 'selecionar') await renderSelecionar();
     else if (kind === 'op') await renderOp(id);
     else if (kind === 'pausadas') await renderPausadas(id);
     else if (kind === 'foto') await renderFoto(id);
     else if (kind === 'grade') await renderGrade(id);
+    else if (kind === 'camera') await renderCamera(id, params);
     else if (kind === 'consulta') await renderConsulta(id);
     else if (kind === 'vistoria') await renderVistoria(id, params);
     else await renderHome();
