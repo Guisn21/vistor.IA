@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -555,7 +555,7 @@ async function buildZip(op, vist, fotos) {
   }
   const docx = await buildDocx(op, vist, fotos, names);
   zip.file(`Relatorio ${op.numero} ${codVist(vist)}.docx`, docx);
-  if (fotos.some(f => f.geo)) zip.file(zipName(op, vist).replace(/\.zip$/, '.kml'), buildKml(op, vist, fotos, names));
+  zip.file(zipName(op, vist).replace(/\.zip$/, '.kml'), buildKml(op, vist, fotos, names));
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
   return new File([blob], zipName(op, vist), { type: 'application/zip' });
 }
@@ -975,7 +975,7 @@ async function renderVistoria(id, params) {
   const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; acoes.appendChild(b); };
   if (vist.status === 'aberta') add('Continuar vistoria', '', () => continuarVistoria(id));
   if (vist.status === 'concluida') {
-    add('⬇︎ Baixar ZIP', '', () => gerarZip(vist.id));
+    add('GERAR ZIP', '', () => gerarZip(vist.id));
     add('Reabrir vistoria para editar', 'sec', () => reabrirVistoria(vist.id));
     add('Excluir fotos e dados do celular', 'danger', () => excluirFotos(vist.id));
   }
@@ -1059,7 +1059,7 @@ async function gerarZip(vistId, recemConcluida = false) {
   vist.zipGeradoEm = Date.now(); await put('vists', vist);
   const canShare = !!navigator.canShare?.({ files: [file] });
   const r = await dialog({ title: recemConcluida ? 'Vistoria concluída' : 'ZIP pronto',
-    html: `<p><b>${esc(file.name)}</b><br>${(file.size / 1048576).toFixed(1)} MB</p><div class="notice">${NOTICE_LOCAL}</div>`,
+    html: `<p><b>${esc(file.name)}</b><br>${(file.size / 1048576).toFixed(1)} MB</p><p>O arquivo .ZIP gerado contém as fotos, áudios e comentários gerados, além de um arquivo .kml com a localização e sentido das fotos, e um relatório .DOCX com todas as informações tabeladas.</p>`,
     buttons: [{ label: '⬇︎ Baixar ZIP', value: 'dl' }, ...(canShare ? [{ label: 'Compartilhar / Salvar em…', value: 'share', cls: 'sec' }] : []), { label: 'Fechar', value: 'close', cls: 'sec' }] });
   if (r === 'dl') download(file);
   if (r === 'share') { if (!(await share(file))) download(file); }

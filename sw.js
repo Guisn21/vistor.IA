@@ -1,6 +1,6 @@
 // Cache do "casco" do app para funcionar sem internet.
 // Ao publicar uma nova versão, altere CACHE para forçar a atualização.
-const CACHE = 'vistorias-v0.7.0';
+const CACHE = 'vistorias-v0.7.1';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'vendor/piexif.js',
   'vendor/docx.mjs', 'vendor/jszip.min.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
