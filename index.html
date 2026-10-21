@@ -29,6 +29,9 @@
     --warn:#e0a744; --warn-bg:#2e2410; --danger:#e5867d; --danger-bg:#2e1715; }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* App, não página: tocar em botões e cartões não seleciona texto (evita a pesquisa do Google por toque no Chrome). */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,.det-txt{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 html,body{margin:0;background:var(--bg);color:var(--text);
   font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--primary);color:var(--primary-ink);

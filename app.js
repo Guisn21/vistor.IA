@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.7.3';
+const APP_VERSION = '0.7.4';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
