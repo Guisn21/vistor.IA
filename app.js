@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.7.2';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -1059,7 +1059,7 @@ async function gerarZip(vistId, recemConcluida = false) {
   vist.zipGeradoEm = Date.now(); await put('vists', vist);
   const canShare = !!navigator.canShare?.({ files: [file] });
   const r = await dialog({ title: recemConcluida ? 'Vistoria concluída' : 'ZIP pronto',
-    html: `<p><b>${esc(file.name)}</b><br>${(file.size / 1048576).toFixed(1)} MB</p><p>O arquivo .ZIP gerado contém as fotos, áudios e comentários gerados, além de um arquivo .kml com a localização e sentido das fotos, e um relatório .DOCX com todas as informações tabeladas.</p>`,
+    html: `<p><b>${esc(file.name)}</b><br>${(file.size / 1048576).toFixed(1)} MB</p><p>O arquivo .ZIP contém as fotos, áudios e comentários gerados, além de um arquivo .kml com a localização e sentido das fotos, e um relatório .DOCX com todas as informações tabeladas.</p>`,
     buttons: [{ label: '⬇︎ Baixar ZIP', value: 'dl' }, ...(canShare ? [{ label: 'Compartilhar / Salvar em…', value: 'share', cls: 'sec' }] : []), { label: 'Fechar', value: 'close', cls: 'sec' }] });
   if (r === 'dl') download(file);
   if (r === 'share') { if (!(await share(file))) download(file); }
