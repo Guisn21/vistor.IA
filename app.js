@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.7.2';
+const APP_VERSION = '0.7.3';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -124,9 +124,14 @@ const ICON = {
   mic: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   lixeira: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   texto: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>',
+  micP: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-label="áudio"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  textoP: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-label="observação"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>',
   lapis: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>',
   baixar: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
 };
+
+// Ícones brancos sobre fundo preto nas miniaturas: áudio e observação escrita.
+const tagsMiniatura = f => f.audio || f.obs ? `<span class="tags">${f.audio ? ICON.micP : ''}${f.obs ? ICON.textoP : ''}</span>` : '';
 
 // ---------- Geolocalização ----------
 // Um "watch" fica ativo enquanto a operação/vistoria está aberta, para a posição
@@ -685,7 +690,7 @@ async function renderGrade(vistId) {
   startGeo();
   view.innerHTML = `<p class="muted small">${fotos.length} foto(s) já tirada(s). Toque numa foto para abrir e editar a observação ou o áudio, ou para descartá-la.</p>
     <div class="grid">${fotos.map(f => `<button class="thumb" data-foto="${f.id}" aria-label="${codFoto(vist, f)}"><img src="${url(toBlob(f.thumb))}" alt="">
-      <span class="tags">${f.audio ? '🎙' : ''}${f.obs ? '📝' : ''}</span><span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>
+      ${tagsMiniatura(f)}<span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>
     <div class="stack" style="margin-top:12px"><button class="btn" id="tirar">📷 PRÓXIMA FOTO</button>
       <button class="btn sec" id="gConcluir">CONCLUIR VISTORIA</button>
       <button class="btn danger" id="gCancelar">CANCELAR VISTORIA</button></div>`;
@@ -968,7 +973,7 @@ async function renderVistoria(id, params) {
     <div class="stack" id="acoes"></div>
     ${fotos.length ? `<h2 style="margin-top:16px">Fotos</h2><p class="muted small" style="margin-top:-6px">Toque numa foto para ver ${vist.status === 'aberta' ? 'e editar ' : ''}a observação e o áudio.</p>
       <div class="grid">${fotos.map(f => `<button class="thumb" data-foto="${f.id}" aria-label="${codFoto(vist, f)}"><img src="${url(toBlob(f.thumb))}" alt="">
-        <span class="tags">${f.audio ? '🎙' : ''}${f.obs ? '📝' : ''}</span><span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>` : ''}
+        ${tagsMiniatura(f)}<span class="cod">F${pad(f.seq, 3)}</span></button>`).join('')}</div>` : ''}
 `;
   view.querySelectorAll('[data-foto]').forEach(el => el.onclick = async () => { await verFoto(vist.id, el.dataset.foto); route(); });
   const acoes = $('#acoes');
