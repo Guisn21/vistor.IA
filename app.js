@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.8.2';
+const APP_VERSION = '0.8.3';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -1059,7 +1059,8 @@ async function gerarZip(vistId, recemConcluida = false) {
   vist.zipGeradoEm = Date.now(); await put('vists', vist);
   const r = await dialog({ title: recemConcluida ? 'Vistoria concluída' : 'ZIP pronto',
     html: `<p><b>${esc(file.name)}</b><br>${(file.size / 1048576).toFixed(1)} MB</p><p>O arquivo .ZIP contém as fotos, áudios e comentários gerados, além de um arquivo .kml com a localização e sentido das fotos, e um relatório .DOCX com todas as informações tabeladas.</p>`,
-    buttons: [{ label: '⬇︎ BAIXAR ZIP', value: 'dl' }, { label: 'COMPARTILHAR ZIP', value: 'share', cls: 'sec' }, { label: 'Fechar', value: 'close', cls: 'sec' }] });
+    // O Chrome do Android recusa compartilhar .zip (lista de tipos permitidos do Chromium); o botão fica só nos outros.
+    buttons: [{ label: '⬇︎ BAIXAR ZIP', value: 'dl' }, ...(/Android/i.test(navigator.userAgent) ? [] : [{ label: 'COMPARTILHAR ZIP', value: 'share', cls: 'sec' }]), { label: 'Fechar', value: 'close', cls: 'sec' }] });
   if (r === 'dl') download(file);
   if (r === 'share') {
     const falha = await share(file);
