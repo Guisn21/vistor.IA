@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.8.5';
+const APP_VERSION = '0.8.6';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -548,7 +548,9 @@ const xml = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 function buildKml(op, vist, fotos, names) {
   const marcas = fotos.filter(f => f.geo).map(f => {
     const g = f.geo, dir = f.direcao;
-    const estilo = dir != null ? `<Style><IconStyle><heading>${dir}</heading><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle></Style>` : '';
+    // O ícone arrow.png do Google aponta para baixo: soma 180° para a seta apontar na direção da foto
+    // (confirmado pelo Gui no Google Earth).
+    const estilo = dir != null ? `<Style><IconStyle><heading>${(dir + 180) % 360}</heading><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle></Style>` : '';
     const desc = [`Foto: ${names[f.id].foto}`, `Horário: ${fmtDT(f.tiradaEm)}`, `Precisão: ${fmtPrec(g)}`,
       `Direção: ${dir != null ? fmtDirecaoRef(f) : 'não registrada'}`, f.audio ? `Áudio: ${names[f.id].audio}` : '', f.obs ? `Observação: ${f.obs}` : ''].filter(Boolean).join('\n');
     return `  <Placemark><name>${xml(codFoto(vist, f))}</name><description>${xml(desc)}</description>${estilo}<Point><coordinates>${g.lon},${g.lat},0</coordinates></Point></Placemark>`;

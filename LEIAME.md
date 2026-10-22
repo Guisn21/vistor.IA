@@ -1,4 +1,4 @@
-# Vistor.IA Generator — v0.8.5
+# Vistor.IA Generator — v0.8.6
 
 App web instalável (PWA) para registrar vistorias no celular (Android e iPhone). Funciona sem internet e sem IA. Tudo fica no aparelho até o usuário baixar o ZIP.
 
