@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.8.3';
+const APP_VERSION = '0.8.4';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -572,15 +572,6 @@ function download(file) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(u), 120000);
 }
-// Abre a janela de compartilhar do celular (ex.: app do OneDrive). Retorna '' se deu certo ou foi
-// cancelado pelo usuário; senão, o motivo da falha, para mostrar na tela.
-async function share(file) {
-  if (!navigator.share) return 'este navegador não tem a função de compartilhar';
-  if (navigator.canShare && !navigator.canShare({ files: [file] })) return 'o navegador não aceita compartilhar arquivos .zip';
-  try { await navigator.share({ files: [file] }); return ''; }
-  catch (e) { return e.name === 'AbortError' ? '' : `${e.name}: ${e.message}`; }
-}
-
 // ---------- Telas ----------
 async function renderHome() {
   setHeader('Vistor.IA Generator', null);
@@ -1059,14 +1050,8 @@ async function gerarZip(vistId, recemConcluida = false) {
   vist.zipGeradoEm = Date.now(); await put('vists', vist);
   const r = await dialog({ title: recemConcluida ? 'Vistoria concluída' : 'ZIP pronto',
     html: `<p><b>${esc(file.name)}</b><br>${(file.size / 1048576).toFixed(1)} MB</p><p>O arquivo .ZIP contém as fotos, áudios e comentários gerados, além de um arquivo .kml com a localização e sentido das fotos, e um relatório .DOCX com todas as informações tabeladas.</p>`,
-    // O Chrome do Android recusa compartilhar .zip (lista de tipos permitidos do Chromium); o botão fica só nos outros.
-    buttons: [{ label: '⬇︎ BAIXAR ZIP', value: 'dl' }, ...(/Android/i.test(navigator.userAgent) ? [] : [{ label: 'COMPARTILHAR ZIP', value: 'share', cls: 'sec' }]), { label: 'Fechar', value: 'close', cls: 'sec' }] });
+    buttons: [{ label: '⬇︎ BAIXAR ZIP', value: 'dl' }, { label: 'Fechar', value: 'close', cls: 'sec' }] });
   if (r === 'dl') download(file);
-  if (r === 'share') {
-    const falha = await share(file);
-    if (falha && await dialog({ title: 'Não foi possível compartilhar', html: `<p>Motivo: ${esc(falha)}.</p><p>Use BAIXAR ZIP e envie o arquivo pelo app do OneDrive.</p>`,
-      buttons: [{ label: '⬇︎ BAIXAR ZIP', value: true }, { label: 'Fechar', value: false, cls: 'sec' }] })) download(file);
-  }
   if (recemConcluida) route();
   return file;
 }
