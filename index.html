@@ -97,6 +97,16 @@ body.capture main{padding:0;max-width:none}
 .cap-bar .btn{padding:12px 3px;font-size:12.5px;line-height:1.15;border-radius:10px}
 .cap-bar .btn.proxima{grid-column:1 / -1;padding:16px 6px;font-size:18px}
 
+/* Grade: tela central da vistoria */
+.grade-tela{padding-bottom:130px}
+.grade-bar{position:fixed;left:0;right:0;bottom:0;z-index:4;background:var(--card);border-top:1px solid var(--line);
+  padding:10px 16px calc(env(safe-area-inset-bottom) + 8px);display:flex;flex-direction:column;align-items:center;gap:4px}
+.grade-bar .btn{max-width:788px}
+.btn.proxima-big{padding:22px 14px;font-size:20px}
+.link{background:none;border:0;color:var(--primary-text);font:inherit;font-size:13px;text-decoration:underline;padding:6px;cursor:pointer}
+.cap-bar.cap-bar2{grid-template-columns:2fr 1fr}
+.cap-bar.cap-bar2 .btn{padding:14px 6px;font-size:14px}
+
 /* Câmera do app */
 .cam{display:flex;flex-direction:column;height:calc(100dvh - var(--hdr) - env(safe-area-inset-top));background:#000;color:#fff}
 .cam-top{display:flex;align-items:center;gap:10px;padding:6px 10px;font-size:13px}

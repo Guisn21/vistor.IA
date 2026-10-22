@@ -1,11 +1,11 @@
-# Vistor.IA Generator — v0.7.4
+# Vistor.IA Generator — v0.8.0
 
 App web instalável (PWA) para registrar vistorias no celular (Android e iPhone). Funciona sem internet e sem IA. Tudo fica no aparelho até o usuário baixar o ZIP.
 
 ## Fluxo
 - Tela principal: **Cadastrar operação** (tomador, número 0000.000-00, empreendimento) ou **Selecionar operação existente** (busca pelos 3 campos; lixeira para excluir).
 - Operação: **Iniciar vistoria** (abre a câmera do app; data = hoje), lápis para editar a operação, **Continuar vistoria pausada**, **Consultar vistorias** (só as vistorias da operação; filtro por data de e até; lixeira para excluir).
-- Foto: câmera dentro do app (um toque salva e abre a foto; botão de lente quando o celular oferece; reserva "Câmera do celular"). Sem GPS, o app avisa e a foto vai sem coordenadas. A bússola registra a direção da câmera.
+- Fotos: PRÓXIMA FOTO abre a câmera do celular; ao aceitar, a foto é salva e o app volta à grade (tela central da vistoria, com Concluir e Cancelar). Tocar numa miniatura abre a foto para áudio, observação ou descarte. Alternativa: câmera do app (sem tela de confirmação, com bússola). Sem GPS, o app avisa e a foto vai sem coordenadas (ou com as do EXIF da câmera, se houver).
 - Sobre a foto, três áreas: lupa (tela cheia), microfone (grava na hora, CONCLUIR vincula à foto) e observação escrita. Áudio e texto são opcionais e podem ser usados juntos.
 - Botões: Cancelar vistoria (confirmação dupla), Descartar foto, Próxima foto e Concluir vistoria (com identificação opcional).
 - Durante a vistoria, o botão ▦ (com o número de fotos) abre a grade das fotos já tiradas; tocar numa foto abre a foto para editar.
