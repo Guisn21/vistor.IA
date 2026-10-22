@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.8.1';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -68,8 +68,10 @@ function fileNames(fotos) {
 const FOTO = { maxSide: 3000, jpegQuality: 0.9 };
 
 // ---------- UI base ----------
-function toast(msg, ms = 3000) {
-  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+function toast(msg, ms = 3000, cls = '') {
+  // Avisos flutuantes (warn/ok) ficam no mesmo lugar: o novo substitui o anterior.
+  if (cls) document.querySelectorAll('.toast.warn, .toast.ok').forEach(x => x.remove());
+  const t = document.createElement('div'); t.className = 'toast' + (cls ? ' ' + cls : ''); t.textContent = msg;
   document.body.appendChild(t); setTimeout(() => t.remove(), ms);
 }
 function setHeader(title, back, action) {
@@ -140,11 +142,11 @@ let geoWatch = null, lastFix = null, geoErr = null;
 function startGeo() {
   if (!('geolocation' in navigator) || geoWatch !== null) return;
   geoWatch = navigator.geolocation.watchPosition(
-    p => { lastFix = p; geoErr = null; },
+    p => { lastFix = p; geoErr = null; if (gpsSemAviso) avisarGpsConectado(); },
     e => { geoErr = e; },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
 }
-function stopGeo() { if (geoWatch !== null) navigator.geolocation.clearWatch(geoWatch); geoWatch = null; }
+function stopGeo() { if (geoWatch !== null) navigator.geolocation.clearWatch(geoWatch); geoWatch = null; gpsSemAviso = gpsConectadoPendente = false; }
 const freshFix = () => lastFix && Date.now() - lastFix.timestamp < 30000 ? lastFix : null;
 function getPosition(timeout = 20000) {
   return new Promise((res, rej) => {
@@ -152,36 +154,22 @@ function getPosition(timeout = 20000) {
     navigator.geolocation.getCurrentPosition(p => { lastFix = p; res(p); }, rej, { enableHighAccuracy: true, maximumAge: 5000, timeout });
   });
 }
-function geoHelp(err) {
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  if (!window.isSecureContext) return 'O app precisa ser aberto por um endereço https para usar a localização.';
-  if (err?.code === 99) return 'Este navegador não oferece localização.';
-  if (err?.code === 1) return ios
-    ? 'A permissão de localização foi negada. No iPhone: Ajustes → Privacidade e Segurança → Serviços de Localização → ative e permita para o Safari (ou "Sites do Safari") com <b>Localização Precisa</b>. Depois toque em "Tentar novamente".'
-    : 'A permissão de localização foi negada. No Android: toque no cadeado ao lado do endereço (ou em Configurações do site no Chrome) → Permissões → Localização → Permitir. Depois toque em "Tentar novamente".';
-  if (err?.code === 2) return ios
-    ? 'A localização do aparelho parece desligada. Ative em Ajustes → Privacidade e Segurança → Serviços de Localização.'
-    : 'A localização do aparelho parece desligada. Puxe a barra de notificações e ative "Localização".';
-  return 'Não foi possível obter a posição a tempo. Se estiver em local fechado, aproxime-se de uma janela ou área aberta e tente novamente.';
+// Sem GPS não há espera: avisa e segue. Quando o sinal voltar durante a vistoria, avisa que conectou.
+let gpsSemAviso = false, gpsConectadoPendente = false;
+function avisarSemGps(msg) {
+  gpsSemAviso = true;
+  toast(msg + (geoErr?.code === 1 ? ' (permissão de localização negada)' : ''), 4000, 'warn');
 }
-// Procura uma posição antes de abrir a câmera. Sem sinal, avisa que a foto vai sem coordenadas.
-// Retorna 'ok' (com posição), 'semgps' (usuário escolheu continuar sem) ou false (voltou).
-let ultimaFalhaGps = 0;
-async function ensureGeo() {
-  if (freshFix()) return 'ok';
-  const ov = document.createElement('div'); ov.className = 'overlay';
-  ov.innerHTML = '<div class="dialog"><h3>Verificando localização…</h3><p class="muted">Aguarde o GPS.</p></div>';
-  document.body.appendChild(ov);
-  // Se a última tentativa falhou há pouco (ex.: subsolo), espera menos antes de avisar.
-  const espera = Date.now() - ultimaFalhaGps < 120000 ? 5000 : 12000;
-  try { await getPosition(espera); ov.remove(); return 'ok'; }
-  catch (err) {
-    ov.remove(); ultimaFalhaGps = Date.now();
-    const r = await dialog({ title: 'Sem sinal de GPS', html: `<p>A próxima foto será tirada <b>sem coordenadas</b>, porque não há sinal de GPS.</p><p class="muted small">${geoHelp(err)}</p>`,
-      buttons: [{ label: 'Continuar', value: 'semgps' }, { label: 'Voltar', value: false, cls: 'sec' }] });
-    return r;
-  }
+function avisarGpsConectado() {
+  if (!/^#\/(grade|foto|camera)\//.test(location.hash)) return;
+  // Com a câmera do celular aberta a página fica escondida: o aviso aparece quando ela volta.
+  if (document.hidden) { gpsConectadoPendente = true; return; }
+  gpsSemAviso = false; gpsConectadoPendente = false;
+  toast(`GPS conectado (±${Math.round(lastFix.coords.accuracy)} m). As próximas fotos terão coordenadas.`, 4000, 'ok');
 }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && gpsConectadoPendente) setTimeout(() => { if (freshFix()) avisarGpsConectado(); }, 1500);
+});
 function posToMeta(p) {
   const c = p.coords;
   return { lat: c.latitude, lon: c.longitude, precisao: c.accuracy, altitude: c.altitude, obtidoEm: p.timestamp };
@@ -229,25 +217,19 @@ const fmtPrec = g => g.precisao != null ? `±${Math.round(g.precisao)} m` : 'pre
 // ela é salva e o app volta para a grade de fotos. O seletor só abre a câmera durante um toque do
 // usuário, por isso cada foto precisa de um toque em PRÓXIMA FOTO.
 // Alternativa: a câmera dentro do app (um toque por foto, com bússola).
-let pendingVistId = null, pendingSemGps = false;
-function abrirCameraApp(vistId, semGps = false) {
+let pendingVistId = null, pendingHash = '';
+function abrirCameraApp(vistId) {
   pedirBussola();
-  location.hash = `#/camera/${vistId}${semGps ? '?semgps=1' : ''}`;
+  if (!freshFix()) avisarSemGps('Não foi possível localizar o GPS. As fotos ficarão sem coordenadas.');
+  location.hash = '#/camera/' + vistId;
 }
-async function requestCamera(vistId) {
+function requestCamera(vistId) {
   pedirBussola();
-  if (freshFix()) { cameraDoCelular(vistId, false); return true; }
-  const g = await ensureGeo();
-  if (!g) return false;
-  // "Continuar" no aviso sem GPS é um toque: a câmera abre direto. Depois de esperar o GPS, pede outro toque.
-  if (g === 'semgps') { cameraDoCelular(vistId, true); return true; }
-  const go = await dialog({ title: 'Localização OK', html: `<p>Precisão atual: ±${Math.round(lastFix.coords.accuracy)} m.</p>`,
-    buttons: [{ label: '📷 Abrir câmera', value: true }, { label: 'Voltar', value: false, cls: 'sec' }] });
-  if (go) cameraDoCelular(vistId, false);
-  return go;
+  if (!freshFix()) avisarSemGps('Não foi possível localizar o GPS. A foto ficará sem coordenadas.');
+  cameraDoCelular(vistId);
 }
-function cameraDoCelular(vistId, semGps) {
-  pendingVistId = vistId; pendingSemGps = semGps;
+function cameraDoCelular(vistId) {
+  pendingVistId = vistId; pendingHash = location.hash;
   const inp = $('#camInput'); inp.value = ''; inp.click();
 }
 $('#camInput').onchange = async e => {
@@ -257,24 +239,19 @@ $('#camInput').onchange = async e => {
   // câmera do celular tiver gravado no EXIF, se houver.
   const orig = await exifOriginal(file);
   const tiradaEm = orig.tiradaEm || Date.now();
-  // Posição no momento em que a foto voltou da câmera. Sem sinal, é salva sem coordenadas.
+  // Posição no momento em que a foto voltou da câmera. Sem sinal, é salva sem coordenadas
+  // (no máximo 3 s de tentativa, para não travar).
   let pos = freshFix();
-  if (!pos && !pendingSemGps && !orig.geo) {
-    try { pos = await getPosition(8000); }
-    catch (err) {
-      const r = await dialog({ title: 'Sem sinal de GPS', html: `<p>Não há sinal de GPS agora. A foto será salva <b>sem coordenadas</b>.</p>`,
-        buttons: [{ label: 'Salvar sem coordenadas', value: 'ok' }, { label: 'Descartar foto', value: 'discard', cls: 'danger' }] });
-      if (r === 'discard') return;
-    }
-  }
-  toast('Salvando foto…', 1500);
+  if (!pos && !orig.geo) pos = await getPosition(3000).catch(() => null);
   try {
     // Posição: GPS do navegador (tem precisão); sem ele, a gravada pela câmera do celular.
     const geo = pos ? posToMeta(pos) : orig.geo;
     const foto = await savePhoto(file, vistId, geo, tiradaEm, orig.direcao, orig.direcaoRef);
     const vist = await get('vists', vistId);
-    toast(`Foto ${codFoto(vist, foto)} salva${geo ? '' : ' sem coordenadas'}.`, 2500);
-    if (location.hash.startsWith('#/grade/' + vistId)) route(); else location.replace('#/grade/' + vistId);
+    if (!geo) avisarSemGps(`Foto ${codFoto(vist, foto)} salva sem coordenadas.`);
+    // Volta para a grade, a menos que o usuário já tenha ido para outra tela enquanto a foto era salva.
+    if (location.hash.startsWith('#/grade/' + vistId)) route();
+    else if (location.hash === pendingHash) location.replace('#/grade/' + vistId);
   } catch (err) { toast('Erro ao salvar a foto: ' + err.message, 6000); }
 };
 
@@ -302,7 +279,7 @@ async function exifOriginal(file) {
   return out;
 }
 
-const cam = { stream: null, devices: [], idx: -1, semGps: false, vistId: null, ocupado: false };
+const cam = { stream: null, devices: [], idx: -1, ocupado: false };
 function fecharCamera() {
   cam.stream?.getTracks().forEach(t => t.stop()); cam.stream = null;
 }
@@ -334,8 +311,6 @@ async function renderCamera(vistId, params) {
   const vist = await get('vists', vistId); if (!vist) return location.replace('#/');
   if (vist.status !== 'aberta') return location.replace('#/vistoria/' + vistId);
   const op = await get('ops', vist.opId), fotos = await fotosDe(vistId);
-  if (cam.vistId !== vistId) { cam.semGps = false; cam.vistId = vistId; }
-  if (params.get('semgps')) cam.semGps = true;
   setHeader(`${op.numero} · ${codVist(vist)}`, () => location.replace('#/grade/' + vistId));
   document.body.classList.add('capture');
   startGeo();
@@ -350,7 +325,7 @@ async function renderCamera(vistId, params) {
         <button class="cam-side" id="camGrade" ${fotos.length ? '' : 'disabled'}>▦ ${fotos.length}<br><small>fotos</small></button>
       </div></div></div>`;
   $('#camLente').onclick = async () => { cam.idx = (cam.idx + 1) % cam.devices.length; await iniciar(); };
-  $('#camNativa').onclick = () => { pedirBussola(); cameraDoCelular(vistId, cam.semGps); };
+  $('#camNativa').onclick = () => requestCamera(vistId);
   $('#camGrade').onclick = () => { location.replace('#/grade/' + vistId); };
   $('#shutter').onclick = () => dispararFoto(vistId);
   // Indicadores de GPS e bússola
@@ -372,14 +347,6 @@ async function renderCamera(vistId, params) {
   }
   await iniciar();
 }
-// Sem sinal de GPS no disparo: avisa uma vez; "Continuar" vale até o fim desta vistoria.
-async function confirmarSemGps() {
-  if (freshFix() || cam.semGps) return true;
-  const r = await dialog({ title: 'Sem sinal de GPS', html: '<p>A próxima foto será tirada <b>sem coordenadas</b>, porque não há sinal de GPS.</p>',
-    buttons: [{ label: 'Continuar', value: true }, { label: 'Voltar', value: false, cls: 'sec' }] });
-  if (r) cam.semGps = true;
-  return r;
-}
 function quadroAtual() {
   const v = $('#camVideo'); const c = document.createElement('canvas');
   c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
@@ -387,7 +354,6 @@ function quadroAtual() {
 }
 async function dispararFoto(vistId) {
   if (cam.ocupado || !cam.stream) return;
-  if (!(await confirmarSemGps())) return;
   cam.ocupado = true;
   const tiradaEm = Date.now(), pos = freshFix(), dir = headingAtual();
   const fl = $('#camFlash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
@@ -400,7 +366,7 @@ async function dispararFoto(vistId) {
     const foto = await savePhoto(blob, vistId, pos ? posToMeta(pos) : null, tiradaEm, dir);
     const n = (await fotosDe(vistId)).length, gb = $('#camGrade');
     if (gb) { gb.disabled = false; gb.innerHTML = `▦ ${n}<br><small>fotos</small>`; }
-    toast(`Foto ${codFoto(await get('vists', vistId), foto)} salva.`, 1500);
+    if (!pos) avisarSemGps(`Foto ${codFoto(await get('vists', vistId), foto)} salva sem coordenadas.`);
   } catch (err) { toast('Erro ao salvar a foto: ' + err.message, 6000); }
   finally { cam.ocupado = false; }
 }
@@ -731,10 +697,7 @@ async function renderGrade(vistId) {
       <button class="link" id="camApp">Usar a câmera do app (sem tela de confirmação)</button></div></div>`;
   view.querySelectorAll('[data-foto]').forEach(el => el.onclick = () => { location.hash = '#/foto/' + el.dataset.foto; });
   $('#tirar').onclick = () => requestCamera(vistId);
-  $('#camApp').onclick = async () => {
-    if (freshFix()) return abrirCameraApp(vistId);
-    const g = await ensureGeo(); if (g) abrirCameraApp(vistId, g === 'semgps');
-  };
+  $('#camApp').onclick = () => abrirCameraApp(vistId);
   $('#gConcluir').onclick = () => concluirVistoria(vistId);
   $('#gCancelar').onclick = () => cancelarVistoria(vist, op);
   window.scrollTo(0, document.body.scrollHeight);

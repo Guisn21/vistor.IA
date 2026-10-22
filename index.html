@@ -140,6 +140,8 @@ body.capture main{padding:0;max-width:none}
 @keyframes pulse{50%{opacity:.25}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 100px);
   background:#222;color:#fff;padding:10px 14px;border-radius:10px;z-index:50;max-width:90vw;font-size:14px}
+.toast.warn{width:min(90vw,340px);text-align:center;background:#b26a00;font-weight:600;top:calc(env(safe-area-inset-top) + 64px);bottom:auto;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.toast.ok{width:min(90vw,340px);text-align:center;background:#2e7d32;font-weight:600;top:calc(env(safe-area-inset-top) + 64px);bottom:auto;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .dl,.edit{background:var(--primary-bg);border:1px solid var(--line);color:var(--primary-text);border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer}
 .trash{background:var(--danger-bg);border:1px solid var(--line);color:var(--danger);border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer}
 .hidden{display:none!important}
