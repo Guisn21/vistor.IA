@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.8.4';
+const APP_VERSION = '0.8.5';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -209,7 +209,8 @@ const headingAtual = () => heading !== null && Date.now() - headingEm < 3000 ? M
 const PONTOS = ['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'];
 const fmtDirecao = h => h == null ? '—' : `${PONTOS[Math.round(h / 45) % 8]} ${Math.round(h)}°`;
 // Direção com a referência: bússola do app = norte magnético; câmera do celular pode gravar norte geográfico.
-const fmtDirecaoRef = f => f.direcao == null ? '—' : `${fmtDirecao(f.direcao)} (${f.direcaoRef === 'T' ? 'norte geográfico' : 'norte magnético'})`;
+// Ref 'Ma' = lida pela bússola do app quando a foto voltou da câmera do celular (aproximada).
+const fmtDirecaoRef = f => f.direcao == null ? '—' : `${fmtDirecao(f.direcao)} (${f.direcaoRef === 'T' ? 'norte geográfico' : f.direcaoRef === 'Ma' ? 'norte magnético, aproximada' : 'norte magnético'})`;
 const fmtPrec = g => g.precisao != null ? `±${Math.round(g.precisao)} m` : 'precisão não informada';
 
 // ---------- Câmera ----------
@@ -243,10 +244,18 @@ $('#camInput').onchange = async e => {
   // (no máximo 3 s de tentativa, para não travar).
   let pos = freshFix();
   if (!pos && !orig.geo) pos = await getPosition(3000).catch(() => null);
+  // Sem direção no EXIF: lê a bússola do app agora que a foto voltou (a página fica em segundo plano
+  // enquanto a câmera do celular está aberta). Espera até 1,5 s por uma leitura nova.
+  let direcao = orig.direcao, direcaoRef = orig.direcaoRef;
+  if (direcao == null) {
+    const desde = Date.now();
+    while (Date.now() - desde < 1500 && !(headingEm > desde && heading !== null)) await new Promise(r => setTimeout(r, 100));
+    if (headingEm > desde && heading !== null) { direcao = Math.round(heading); direcaoRef = 'Ma'; }
+  }
   try {
     // Posição: GPS do navegador (tem precisão); sem ele, a gravada pela câmera do celular.
     const geo = pos ? posToMeta(pos) : orig.geo;
-    const foto = await savePhoto(file, vistId, geo, tiradaEm, orig.direcao, orig.direcaoRef);
+    const foto = await savePhoto(file, vistId, geo, tiradaEm, direcao, direcaoRef);
     const vist = await get('vists', vistId);
     if (!geo) avisarSemGps(`Foto ${codFoto(vist, foto)} salva sem coordenadas.`);
     // Volta para a grade, a menos que o usuário já tenha ido para outra tela enquanto a foto era salva.
