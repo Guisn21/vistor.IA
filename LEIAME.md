@@ -1,11 +1,11 @@
-# Vistor.IA Generator — v0.8.6
+# Vistor.IA Generator — v0.9.0
 
 App web instalável (PWA) para registrar vistorias no celular (Android e iPhone). Funciona sem internet e sem IA. Tudo fica no aparelho até o usuário baixar o ZIP.
 
 ## Fluxo
 - Tela principal: **Cadastrar operação** (tomador, número 0000.000-00, empreendimento) ou **Selecionar operação existente** (busca pelos 3 campos; lixeira para excluir).
 - Operação: **Iniciar vistoria** (abre a câmera do app; data = hoje), lápis para editar a operação, **Continuar vistoria pausada**, **Consultar vistorias** (só as vistorias da operação; filtro por data de e até; lixeira para excluir).
-- Fotos: PRÓXIMA FOTO abre a câmera do celular; ao aceitar, a foto é salva e o app volta à grade (tela central da vistoria, com Concluir e Cancelar). Tocar numa miniatura abre a foto para áudio, observação ou descarte. Alternativa: câmera do app (sem tela de confirmação, com bússola). Sem GPS, o app avisa (sem travar) e a foto vai sem coordenadas (ou com as do EXIF da câmera, se houver); quando o sinal volta, avisa "GPS conectado".
+- Fotos: INICIAR VISTORIA e PRÓXIMA FOTO abrem a câmera do app (sem tela de confirmação, com bússola). A grade (tela central da vistoria, com Concluir e Cancelar) mostra as fotos; tocar numa miniatura abre a foto para áudio, observação ou descarte. Alternativa: botão USAR CÂMERA DO CELULAR (zoom e lentes; segure o celular apontado por 1 s após confirmar cada foto para registrar a direção). Sem GPS, o app avisa (sem travar) e a foto vai sem coordenadas (ou com as do EXIF da câmera, se houver); quando o sinal volta, avisa "GPS conectado".
 - Sobre a foto, três áreas: lupa (tela cheia), microfone (grava na hora, CONCLUIR vincula à foto) e observação escrita. Áudio e texto são opcionais e podem ser usados juntos.
 - Botões: Cancelar vistoria (confirmação dupla), Descartar foto, Próxima foto e Concluir vistoria (com identificação opcional).
 - Durante a vistoria, o botão ▦ (com o número de fotos) abre a grade das fotos já tiradas; tocar numa foto abre a foto para editar.

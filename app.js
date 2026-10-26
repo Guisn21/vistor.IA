@@ -2,7 +2,7 @@
 // Todos os dados ficam no aparelho (IndexedDB). O app não usa internet nem IA:
 // o envio para outras plataformas é feito pelo usuário com o ZIP gerado.
 
-const APP_VERSION = '0.8.6';
+const APP_VERSION = '0.9.0';
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 
@@ -215,19 +215,41 @@ const fmtPrec = g => g.precisao != null ? `±${Math.round(g.precisao)} m` : 'pre
 
 // ---------- Câmera ----------
 // Principal: o app de câmera do celular (todos os recursos e lentes). Depois de aceitar a foto,
-// ela é salva e o app volta para a grade de fotos. O seletor só abre a câmera durante um toque do
-// usuário, por isso cada foto precisa de um toque em PRÓXIMA FOTO.
-// Alternativa: a câmera dentro do app (um toque por foto, com bússola).
+// (Gui, 26/10) Principal: a câmera dentro do app (um toque por foto, bússola no instante da foto).
+// Alternativa: o app de câmera do celular (zoom e lentes). O seletor só abre a câmera durante um toque
+// do usuário, por isso cada foto precisa de um toque; a direção é lida pela bússola do app quando a
+// foto volta, com o celular parado por 1 s.
 let pendingVistId = null, pendingHash = '';
 function abrirCameraApp(vistId) {
   pedirBussola();
   if (!freshFix()) avisarSemGps('Não foi possível localizar o GPS. As fotos ficarão sem coordenadas.');
   location.hash = '#/camera/' + vistId;
 }
-function requestCamera(vistId) {
+async function requestCamera(vistId) {
   pedirBussola();
+  // O toque em "Abrir câmera do celular" é o gesto do usuário que permite abrir o seletor.
+  const ok = await dialog({ title: 'Câmera do celular', html: '<p>Depois de confirmar cada foto, <b>mantenha o celular apontado na mesma direção por 1 segundo</b>, até aparecer "Direção registrada".</p><p class="muted small">Assim a direção da foto é captada com mais precisão.</p>',
+    buttons: [{ label: '📱 Abrir câmera do celular', value: true }, { label: 'Voltar', value: false, cls: 'sec' }] });
+  if (!ok) return;
   if (!freshFix()) avisarSemGps('Não foi possível localizar o GPS. A foto ficará sem coordenadas.');
   cameraDoCelular(vistId);
+}
+// Junta as leituras da bússola durante `ms` (depois da primeira leitura nova, que pode demorar até
+// 1,5 s quando a página volta do segundo plano) e devolve a média circular, ou null.
+async function coletarDirecao(ms = 1000) {
+  const desde = Date.now(), lidas = []; let ultima = headingEm, inicio = 0;
+  while (Date.now() - desde < 1500 + ms) {
+    if (headingEm > ultima && headingEm > desde) {
+      ultima = headingEm; if (!inicio) inicio = Date.now();
+      if (heading !== null) lidas.push(heading);
+    }
+    if (inicio && Date.now() - inicio >= ms) break;
+    if (!inicio && Date.now() - desde >= 1500) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  if (!lidas.length) return null;
+  const r = Math.PI / 180, x = lidas.reduce((a, h) => a + Math.cos(h * r), 0), y = lidas.reduce((a, h) => a + Math.sin(h * r), 0);
+  return Math.round((Math.atan2(y, x) / r + 360) % 360) % 360;
 }
 function cameraDoCelular(vistId) {
   pendingVistId = vistId; pendingHash = location.hash;
@@ -236,22 +258,22 @@ function cameraDoCelular(vistId) {
 $('#camInput').onchange = async e => {
   const file = e.target.files[0], vistId = pendingVistId;
   if (!file || !vistId) return;
-  // A bússola do app não serve aqui (seria lida depois que a foto volta); usa a direção que a
-  // câmera do celular tiver gravado no EXIF, se houver.
+  // Começa já a ler a bússola (usuário segura o celular parado por 1 s) enquanto lê o EXIF original.
+  toast('Mantenha o celular apontado: registrando a direção…', 2500, 'warn');
+  const lendoDirecao = coletarDirecao(1000);
   const orig = await exifOriginal(file);
   const tiradaEm = orig.tiradaEm || Date.now();
   // Posição no momento em que a foto voltou da câmera. Sem sinal, é salva sem coordenadas
   // (no máximo 3 s de tentativa, para não travar).
   let pos = freshFix();
   if (!pos && !orig.geo) pos = await getPosition(3000).catch(() => null);
-  // Sem direção no EXIF: lê a bússola do app agora que a foto voltou (a página fica em segundo plano
-  // enquanto a câmera do celular está aberta). Espera até 1,5 s por uma leitura nova.
+  // Direção gravada pela câmera do celular (EXIF), se houver; senão, a bússola do app lida agora que a
+  // foto voltou (a página fica em segundo plano enquanto a câmera do celular está aberta).
   let direcao = orig.direcao, direcaoRef = orig.direcaoRef;
-  if (direcao == null) {
-    const desde = Date.now();
-    while (Date.now() - desde < 1500 && !(headingEm > desde && heading !== null)) await new Promise(r => setTimeout(r, 100));
-    if (headingEm > desde && heading !== null) { direcao = Math.round(heading); direcaoRef = 'Ma'; }
-  }
+  const lida = await lendoDirecao;
+  if (direcao == null && lida != null) { direcao = lida; direcaoRef = 'Ma'; }
+  document.querySelectorAll('.toast.warn').forEach(x => x.remove());
+  if (direcao != null) toast(`Direção registrada: ${fmtDirecao(direcao)}`, 1500, 'ok');
   try {
     // Posição: GPS do navegador (tem precisão); sem ele, a gravada pela câmera do celular.
     const geo = pos ? posToMeta(pos) : orig.geo;
@@ -259,8 +281,8 @@ $('#camInput').onchange = async e => {
     const vist = await get('vists', vistId);
     if (!geo) avisarSemGps(`Foto ${codFoto(vist, foto)} salva sem coordenadas.`);
     // Volta para a grade, a menos que o usuário já tenha ido para outra tela enquanto a foto era salva.
-    if (location.hash.startsWith('#/grade/' + vistId)) route();
-    else if (location.hash === pendingHash) location.replace('#/grade/' + vistId);
+    // Fica na tela de onde a câmera do celular foi aberta (grade ou câmera do app), atualizada.
+    if (location.hash === pendingHash || location.hash.startsWith('#/grade/' + vistId)) route();
   } catch (err) { toast('Erro ao salvar a foto: ' + err.message, 6000); }
 };
 
@@ -329,7 +351,7 @@ async function renderCamera(vistId, params) {
       <div class="cam-erro hidden" id="camErro"></div></div>
     <div class="cam-bottom">
       <div class="cam-row">
-        <button class="cam-side" id="camNativa">Câmera do<br>celular</button>
+        <button class="cam-side cel" id="camNativa">📱 Câmera<br>do celular</button>
         <button class="shutter" id="shutter" aria-label="Disparar"><span></span></button>
         <button class="cam-side" id="camGrade" ${fotos.length ? '' : 'disabled'}>▦ ${fotos.length}<br><small>fotos</small></button>
       </div></div></div>`;
@@ -668,10 +690,9 @@ async function renderOp(id) {
   $('#editarOp').onclick = () => { location.hash = '#/cadastro/' + op.id; };
   $('#rapido').onclick = async () => {
     pedirBussola();
-    // Com posição recente, a câmera do celular abre no mesmo toque; a vistoria já aparece na grade.
+    // A vistoria é criada e a câmera do app abre direto (o botão Voltar da câmera leva à grade).
     const v = await novaVistoria(op);
-    location.hash = '#/grade/' + v.id;
-    requestCamera(v.id);
+    abrirCameraApp(v.id);
   };
   $('#pausada').onclick = async () => {
     if (!abertas.length) return toast('Não há vistorias pausadas nesta operação.');
@@ -697,10 +718,10 @@ async function renderGrade(vistId) {
       <button class="btn danger" id="gCancelar">CANCELAR VISTORIA</button></div>
     <div class="grade-bar">
       <button class="btn proxima-big" id="tirar">📷 PRÓXIMA FOTO</button>
-      <button class="link" id="camApp">Usar a câmera do app (sem tela de confirmação)</button></div></div>`;
+      <button class="btn sec" id="camCel">📱 USAR CÂMERA DO CELULAR</button></div></div>`;
   view.querySelectorAll('[data-foto]').forEach(el => el.onclick = () => { location.hash = '#/foto/' + el.dataset.foto; });
-  $('#tirar').onclick = () => requestCamera(vistId);
-  $('#camApp').onclick = () => abrirCameraApp(vistId);
+  $('#tirar').onclick = () => abrirCameraApp(vistId);
+  $('#camCel').onclick = () => requestCamera(vistId);
   $('#gConcluir').onclick = () => concluirVistoria(vistId);
   $('#gCancelar').onclick = () => cancelarVistoria(vist, op);
   window.scrollTo(0, document.body.scrollHeight);
